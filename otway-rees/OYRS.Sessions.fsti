@@ -9,18 +9,23 @@ module LC = LabeledCryptoAPI
 module LR = LabeledRuntimeAPI
 
 
+(* Otway-Rees specific aliases *)
+
+let is_labeled i b l = LC.is_labeled MSG.oyrs_global_usage i b l
+
+
 noeq type session_st =
   (* Auth server session for secret keys shared with principals *)
   | AuthServerSession: p:principal -> k_ps:bytes -> session_st
   (* Initial knowledge of principals *)
-  | InitiatorInit: k_as:bytes -> b:principal -> session_st
-  | ResponderInit: k_bs:bytes -> session_st
+  | InitiatorInit: srv:principal -> k_as:bytes -> b:principal -> session_st
+  | ResponderInit: srv:principal -> k_bs:bytes -> session_st
   (* Protocol states *)
-  | InitiatorSentMsg1: k_as:bytes -> b:principal -> c:bytes -> n_a:bytes -> session_st
-  | ResponderSentMsg2: k_bs:bytes -> a:principal -> c:bytes -> n_b:bytes -> session_st
+  | InitiatorSentMsg1: srv:principal -> k_as:bytes -> b:principal -> c:bytes -> n_a:bytes -> session_st
+  | ResponderSentMsg2: srv:principal -> k_bs:bytes -> a:principal -> c:bytes -> n_b:bytes -> session_st
   | AuthServerSentMsg3: a:principal -> b:principal -> c:bytes -> n_a:bytes -> n_b:bytes -> k_ab:bytes -> session_st
-  | ResponderSentMsg4: a:principal -> k_ab:bytes -> session_st
-  | InitiatorRecvedMsg4: b:principal -> k_ab:bytes -> session_st
+  | ResponderSentMsg4: srv:principal -> a:principal -> k_ab:bytes -> session_st
+  | InitiatorRecvedMsg4: srv:principal -> b:principal -> k_ab:bytes -> session_st
 
 val valid_session: i:nat -> p:principal -> si:nat -> vi:nat -> st:session_st -> Type0
 
