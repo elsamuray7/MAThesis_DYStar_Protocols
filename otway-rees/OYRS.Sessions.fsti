@@ -10,8 +10,12 @@ module LR = LabeledRuntimeAPI
 
 
 (* Otway-Rees specific aliases *)
+// TODO: move to common util module
 
 let is_labeled i b l = LC.is_labeled MSG.oyrs_global_usage i b l
+
+let str_to_bytes #i s = LC.string_to_bytes #(MSG.oyrs_global_usage) #i s
+let concat #i #l b1 b2 = LC.concat #(MSG.oyrs_global_usage) #i #l b1 b2
 
 
 noeq type session_st =
