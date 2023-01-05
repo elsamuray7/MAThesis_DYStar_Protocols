@@ -8,13 +8,6 @@ open CryptoLib
 module LC = LabeledCryptoAPI
 
 
-/// Encrypted message parts
-noeq type encval =
-  | EncMsg1: n_a:bytes -> c:bytes -> a:string -> b:string -> encval
-  | EncMsg2: n_b:bytes -> c:bytes -> a:string -> b:string -> encval
-  | EncMsg3_I: n_a:bytes -> k_ab:bytes -> encval
-  | EncMsg3_R: n_b:bytes -> k_ab:bytes -> encval
-
 let oyrs_key_usages : LC.key_usages = LC.default_key_usages
 
 let can_pke_encrypt (i:nat) s pk m = True
@@ -35,6 +28,25 @@ let oyrs_global_usage : LC.global_usage = {
 }
 
 let msg i l = LC.msg oyrs_global_usage i l
+let is_msg i b l = LC.is_msg oyrs_global_usage i b l
+
+
+/// Format of encrypted message parts
+noeq type encval =
+  | EncMsg1: n_a:bytes -> c:bytes -> a:string -> b:string -> encval
+  | EncMsg2: n_b:bytes -> c:bytes -> a:string -> b:string -> encval
+  | EncMsg3_I: n_a:bytes -> k_ab:bytes -> encval
+  | EncMsg3_R: n_b:bytes -> k_ab:bytes -> encval
+
+val valid_encval: i:nat -> ev:encval -> l:label -> Type0
+
+val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> msg i l
+// TODO: successful parsing should produce valid envcal
+val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
+
+val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label{valid_encval i ev l} ->
+  Lemma (parse_encval (serialize_encval i ev l) == Success ev)
+
 
 noeq type message (i:nat) =
   | Msg1: c:bytes -> a:string -> b:string -> ev_a:msg i public -> message i
