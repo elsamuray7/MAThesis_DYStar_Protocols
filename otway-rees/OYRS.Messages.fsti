@@ -45,4 +45,12 @@ noeq type message (i:nat) =
 val valid_message: i:nat -> m:(message i) -> Type0
 
 val serialize_msg: i:nat -> m:(message i){valid_message i m} -> msg i public
-val parse_msg: #i:nat -> msg i public -> result (message i)
+val parse_msg: #i:nat -> sm:(msg i public) -> r:(result (message i))
+  (*{
+    match r with
+    | Success m -> valid_message i m
+    | Error _ -> True
+  }*)
+
+val parse_serialize_msg_lemma: i:nat -> m:(message i){valid_message i m} ->
+  Lemma (parse_msg (serialize_msg i m) == Success m)
