@@ -54,13 +54,13 @@ let serialize_session_st i p si vi st =
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
     concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) srv_bytes (concat #i #(readers [V p si vi]) k_bs (concat #i #(readers [V p si vi]) a_bytes (concat #i #(readers [V p si vi]) c n_b))))
   | AuthServerSentMsg3 a b c n_a n_b k_ab ->
-  let tag = str_to_bytes #i "srv_sent_m3" in
-  let a_bytes = str_to_bytes #i a in
-  let b_bytes = str_to_bytes #i b in
-  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
-  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_a) (readers [P p]) (readers [V p si vi]);
-  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi]);
-  concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) a_bytes (concat #i #(readers [V p si vi]) b_bytes (concat #i #(readers [V p si vi]) c (concat #i #(readers [V p si vi]) n_a (concat #i #(readers [V p si vi]) n_b k_ab)))))
+    let tag = str_to_bytes #i "srv_sent_m3" in
+    let a_bytes = str_to_bytes #i a in
+    let b_bytes = str_to_bytes #i b in
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_a) (readers [P p]) (readers [V p si vi]);
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi]);
+    concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) a_bytes (concat #i #(readers [V p si vi]) b_bytes (concat #i #(readers [V p si vi]) c (concat #i #(readers [V p si vi]) n_a (concat #i #(readers [V p si vi]) n_b k_ab)))))
   | ResponderSentMsg4 srv a k_ab ->
     let tag = str_to_bytes #i "r_sent_m4" in
     let srv_bytes = str_to_bytes #i srv in
@@ -138,15 +138,13 @@ let parse_serialize_session_st_lemma i p si vi st =
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_pri_srv) (readers [P p]) (readers [V p si vi])
   | ResponderSentMsg2 srv k_bs a c n_b ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi])
-    ;admit()
   | AuthServerSentMsg3 a b c n_a n_b k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
-  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_a) (readers [P p]) (readers [V p si vi]);
-  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi])
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_a) (readers [P p]) (readers [V p si vi]);
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi])
+    ;admit()
   | ResponderSentMsg4 srv a k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
-    ;admit()
   | InitiatorRecvedMsg4 srv b k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
-    ;admit()
   | _ -> ()
