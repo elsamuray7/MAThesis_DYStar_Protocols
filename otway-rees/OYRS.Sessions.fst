@@ -51,7 +51,7 @@ let serialize_session_st i p si vi st =
     let tag = str_to_bytes #i "r_sent_m2" in
     let srv_bytes = str_to_bytes #i srv in
     let a_bytes = str_to_bytes #i a in
-    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p i vi]);
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
     concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) srv_bytes (concat #i #(readers [V p si vi]) k_bs (concat #i #(readers [V p si vi]) a_bytes (concat #i #(readers [V p si vi]) c n_b))))
   | AuthServerSentMsg3 a b c n_a n_b k_ab ->
   let tag = str_to_bytes #i "srv_sent_m3" in
@@ -73,3 +73,80 @@ let serialize_session_st i p si vi st =
     let b_bytes = str_to_bytes #i b in
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi]);
     concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) srv_bytes (concat #i #(readers [V p si vi]) b_bytes k_ab))
+
+let parse_session_st sst =
+  split sst `bind` (fun (tag_bytes, rest) ->
+  bytes_to_string tag_bytes `bind` (fun tag ->
+  match tag with
+  | "srv_sess" ->
+    split rest `bind` (fun (pri_bytes, k_pri_srv) ->
+    bytes_to_string pri_bytes `bind` (fun pri ->
+    Success (AuthServerSession pri k_pri_srv)))
+  | "i_init" ->
+    split rest `bind` (fun (srv_bytes, rest) ->
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    split rest `bind` (fun (k_as, b_bytes) ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    Success (InitiatorInit srv k_as b)))))
+  | "r_init" ->
+    split rest `bind` (fun (srv_bytes, k_bs) ->
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    Success (ResponderInit srv k_bs)))
+  | "i_sent_m1" ->
+    split rest `bind` (fun (srv_bytes, rest) ->
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    split rest `bind` (fun (k_as, rest) ->
+    split rest `bind` (fun (b_bytes, rest) ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    split rest `bind` (fun (c, n_a) ->
+    Success (InitiatorSentMsg1 srv k_as b c n_a)))))))
+  | "r_sent_m2" ->
+    split rest `bind` (fun (srv_bytes, rest) ->
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    split rest `bind` (fun (k_bs, rest) ->
+    split rest `bind` (fun (a_bytes, rest) ->
+    bytes_to_string a_bytes `bind` (fun a ->
+    split rest `bind` (fun (c, n_b) ->
+    Success (ResponderSentMsg2 srv k_bs a c n_b)))))))
+  | "srv_sent_m3" ->
+    split rest `bind` (fun (a_bytes, rest) ->
+    bytes_to_string a_bytes `bind` (fun a ->
+    split rest `bind` (fun (b_bytes, rest) ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    split rest `bind` (fun (c, rest) ->
+    split rest `bind` (fun (n_a, rest) ->
+    split rest `bind` (fun (n_b, k_ab) ->
+    Success (AuthServerSentMsg3 a b c n_a n_b k_ab))))))))
+  | "r_sent_m4" ->
+    split rest `bind` (fun (srv_bytes, rest) ->
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    split rest `bind` (fun (a_bytes, k_ab) ->
+    bytes_to_string a_bytes `bind` (fun a ->
+    Success (ResponderSentMsg4 srv a k_ab)))))
+  | "i_rcvd_m4" ->
+    split rest `bind` (fun (srv_bytes, rest) ->
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    split rest `bind` (fun (b_bytes, k_ab) ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    Success (InitiatorRecvedMsg4 srv b k_ab)))))
+  | t -> Error ("invalid tag: " ^ t)
+  ))
+
+let parse_serialize_session_st_lemma i p si vi st =
+  match st with
+  | AuthServerSession pri k_pri_srv ->
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_pri_srv) (readers [P p]) (readers [V p si vi])
+  | ResponderSentMsg2 srv k_bs a c n_b ->
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi])
+    ;admit()
+  | AuthServerSentMsg3 a b c n_a n_b k_ab ->
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
+  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_a) (readers [P p]) (readers [V p si vi]);
+  LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi])
+  | ResponderSentMsg4 srv a k_ab ->
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
+    ;admit()
+  | InitiatorRecvedMsg4 srv b k_ab ->
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
+    ;admit()
+  | _ -> ()
