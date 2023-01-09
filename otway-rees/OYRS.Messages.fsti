@@ -41,11 +41,16 @@ noeq type encval =
 val valid_encval: i:nat -> ev:encval -> l:label -> Type0
 
 val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> msg i l
-// TODO: successful parsing should produce valid envcal
 val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
+  {
+    match r with
+    | Success ev -> valid_encval i ev l
+    | Error _ -> True
+  }
 
-val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label{valid_encval i ev l} ->
-  Lemma (parse_encval (serialize_encval i ev l) == Success ev)
+val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label ->
+  Lemma (requires (valid_encval i ev l))
+        (ensures (parse_encval (serialize_encval i ev l) == Success ev))
 
 
 noeq type message (i:nat) =
@@ -58,11 +63,12 @@ val valid_message: i:nat -> m:(message i) -> Type0
 
 val serialize_msg: i:nat -> m:(message i){valid_message i m} -> msg i public
 val parse_msg: #i:nat -> sm:(msg i public) -> r:(result (message i))
-  (*{
+  {
     match r with
     | Success m -> valid_message i m
     | Error _ -> True
-  }*)
+  }
 
-val parse_serialize_msg_lemma: i:nat -> m:(message i){valid_message i m} ->
-  Lemma (parse_msg (serialize_msg i m) == Success m)
+val parse_serialize_msg_lemma: i:nat -> m:(message i) ->
+  Lemma (requires (valid_message i m))
+        (ensures (parse_msg (serialize_msg i m) == Success m))
