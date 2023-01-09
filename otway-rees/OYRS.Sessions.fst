@@ -132,6 +132,7 @@ let parse_session_st sst =
   | t -> Error ("invalid tag: " ^ t)
   ))
 
+#push-options "--z3rlimit 100"
 let parse_serialize_session_st_lemma i p si vi st =
   match st with
   | AuthServerSession pri k_pri_srv ->
@@ -141,10 +142,16 @@ let parse_serialize_session_st_lemma i p si vi st =
   | AuthServerSentMsg3 a b c n_a n_b k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi]);
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_a) (readers [P p]) (readers [V p si vi]);
-    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi])
-    ;admit()
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages n_b) (readers [P p]) (readers [V p si vi]);
+    split_concat_lemma n_b k_ab;
+    split_concat_lemma n_a (concat #i #(readers [V p si vi]) n_b k_ab);
+    split_concat_lemma c (concat #i #(readers [V p si vi]) n_a (concat #i #(readers [V p si vi]) n_b k_ab));
+    split_concat_lemma (str_to_bytes #i b) (concat #i #(readers [V p si vi]) c (concat #i #(readers [V p si vi]) n_a (concat #i #(readers [V p si vi]) n_b k_ab)));
+    split_concat_lemma (str_to_bytes #i a) (concat #i #(readers [V p si vi]) (str_to_bytes #i b) (concat #i #(readers [V p si vi]) c (concat #i #(readers [V p si vi]) n_a (concat #i #(readers [V p si vi]) n_b k_ab))));
+    split_concat_lemma (str_to_bytes #i "srv_sent_m3") (concat #i #(readers [V p si vi]) (str_to_bytes #i a) (concat #i #(readers [V p si vi]) (str_to_bytes #i b) (concat #i #(readers [V p si vi]) c (concat #i #(readers [V p si vi]) n_a (concat #i #(readers [V p si vi]) n_b k_ab)))))
   | ResponderSentMsg4 srv a k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
   | InitiatorRecvedMsg4 srv b k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
   | _ -> ()
+#pop-options
