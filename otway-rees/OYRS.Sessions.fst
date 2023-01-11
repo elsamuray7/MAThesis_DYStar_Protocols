@@ -1,27 +1,6 @@
 module OYRS.Sessions
 
 
-let valid_session i p si vi st =
-  match st with
-  | AuthServerSession pri k_pri_srv -> MSG.is_msg i k_pri_srv (readers [P p])
-  | InitiatorInit srv k_as b -> is_labeled i k_as (readers [P p; P srv])
-  | ResponderInit srv k_bs -> is_labeled i k_bs (readers [P p; P srv])
-  | InitiatorSentMsg1 srv k_as b c n_a ->
-    is_labeled i k_as (readers [P p; P srv]) /\
-    is_labeled i c public /\
-    is_labeled i n_a (readers [P p; P srv])
-  | ResponderSentMsg2 srv k_bs a c n_b ->
-    is_labeled i k_bs (readers [P p; P srv]) /\
-    MSG.is_msg i c public /\
-    is_labeled i n_b (readers [P p; P srv])
-  | AuthServerSentMsg3 a b c n_a n_b k_ab ->
-    MSG.is_msg i c public /\
-    MSG.is_msg i n_a (readers [P p]) /\
-    MSG.is_msg i n_b (readers [P p]) /\
-    is_labeled i k_ab (readers [P p; P a; P b])
-  | ResponderSentMsg4 srv a k_ab -> MSG.is_msg i k_ab (readers [P p])
-  | InitiatorRecvedMsg4 srv b k_ab -> MSG.is_msg i k_ab (readers [P p])
-
 let serialize_session_st i p si vi st =
   match st with
   | AuthServerSession pri k_pri_srv ->
@@ -154,23 +133,4 @@ let parse_serialize_session_st_lemma i p si vi st =
   | InitiatorRecvedMsg4 srv b k_ab ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_ab) (readers [P p]) (readers [V p si vi])
   | _ -> ()
-
-let valid_session_later i j p si vi st =
-  LC.can_flow_later i j (readers [P p]) (readers [P p]);
-  match st with
-  | AuthServerSession pri k_pri_srv ->
-    LC.is_valid_later MSG.oyrs_global_usage i j k_pri_srv
-  | ResponderSentMsg2 srv k_bs a c n_b ->
-    LC.is_valid_later MSG.oyrs_global_usage i j c
-  | AuthServerSentMsg3 a b c n_a n_b k_ab ->
-    LC.is_valid_later MSG.oyrs_global_usage i j c;
-    LC.is_valid_later MSG.oyrs_global_usage i j n_a;
-    LC.is_valid_later MSG.oyrs_global_usage i j n_b
-  | ResponderSentMsg4 srv a k_ab ->
-    LC.is_valid_later MSG.oyrs_global_usage i j k_ab
-  | InitiatorRecvedMsg4 srv b k_ab ->
-    LC.is_valid_later MSG.oyrs_global_usage i j k_ab
-  | _ -> (
-    assert(forall (b:bytes) (l:label). is_labeled i b l /\ later_than j i ==> is_labeled j b l)
-  )
 #pop-options

@@ -31,7 +31,49 @@ noeq type session_st =
   | ResponderSentMsg4: srv:principal -> a:principal -> k_ab:bytes -> session_st
   | InitiatorRecvedMsg4: srv:principal -> b:principal -> k_ab:bytes -> session_st
 
-val valid_session: i:nat -> p:principal -> si:nat -> vi:nat -> st:session_st -> Type0
+(* Predicates that must be implemented in interface file in order to expose their
+implementation for usage in other modules *)
+
+let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
+  match st with
+  | AuthServerSession pri k_pri_srv -> MSG.is_msg i k_pri_srv (readers [P p])
+  | InitiatorInit srv k_as b -> is_labeled i k_as (readers [P p; P srv])
+  | ResponderInit srv k_bs -> is_labeled i k_bs (readers [P p; P srv])
+  | InitiatorSentMsg1 srv k_as b c n_a ->
+    is_labeled i k_as (readers [P p; P srv]) /\
+    is_labeled i c public /\
+    is_labeled i n_a (readers [P p; P srv])
+  | ResponderSentMsg2 srv k_bs a c n_b ->
+    is_labeled i k_bs (readers [P p; P srv]) /\
+    MSG.is_msg i c public /\
+    is_labeled i n_b (readers [P p; P srv])
+  | AuthServerSentMsg3 a b c n_a n_b k_ab ->
+    MSG.is_msg i c public /\
+    MSG.is_msg i n_a (readers [P p]) /\
+    MSG.is_msg i n_b (readers [P p]) /\
+    is_labeled i k_ab (readers [P p; P a; P b])
+  | ResponderSentMsg4 srv a k_ab -> MSG.is_msg i k_ab (readers [P p])
+  | InitiatorRecvedMsg4 srv b k_ab -> MSG.is_msg i k_ab (readers [P p])
+
+let valid_session_later (i j:timestamp) (p:principal) (si vi:nat) (st:session_st) :
+  Lemma (ensures (valid_session i p si vi st /\ later_than j i ==> valid_session j p si vi st))
+= LC.can_flow_later i j (readers [P p]) (readers [P p]);
+  match st with
+  | AuthServerSession pri k_pri_srv ->
+    LC.is_valid_later MSG.oyrs_global_usage i j k_pri_srv
+  | ResponderSentMsg2 srv k_bs a c n_b ->
+    LC.is_valid_later MSG.oyrs_global_usage i j c
+  | AuthServerSentMsg3 a b c n_a n_b k_ab ->
+    LC.is_valid_later MSG.oyrs_global_usage i j c;
+    LC.is_valid_later MSG.oyrs_global_usage i j n_a;
+    LC.is_valid_later MSG.oyrs_global_usage i j n_b
+  | ResponderSentMsg4 srv a k_ab ->
+    LC.is_valid_later MSG.oyrs_global_usage i j k_ab
+  | InitiatorRecvedMsg4 srv b k_ab ->
+    LC.is_valid_later MSG.oyrs_global_usage i j k_ab
+  | _ -> (
+    assert(forall (b:bytes) (l:label). is_labeled i b l /\ later_than j i ==> is_labeled j b l)
+  )
 
 val serialize_session_st: i:nat -> p:principal -> si:nat -> vi:nat -> st:session_st{valid_session i p si vi st} -> MSG.msg i (readers [V p si vi])
 
@@ -48,9 +90,6 @@ let oyrs_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (v
     (match parse_session_st state with
      | Success s -> valid_session trace_idx p state_session_idx version s
      | _ -> True)
-
-val valid_session_later: i:timestamp -> j:timestamp -> p:principal -> si:nat -> vi:nat -> st:session_st ->
-  Lemma (ensures (valid_session i p si vi st /\ later_than j i ==> valid_session j p si vi st))
 
 let oyrs_session_st_inv_later (i:timestamp) (j:timestamp) (p:principal) (si:nat) (vi:nat) (state:bytes) :
   Lemma ((oyrs_session_st_inv i p si vi state /\ later_than j i) ==> oyrs_session_st_inv j p si vi state)
