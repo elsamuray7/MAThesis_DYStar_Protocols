@@ -49,12 +49,26 @@ let oyrs_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (v
      | Success s -> valid_session trace_idx p state_session_idx version s
      | _ -> True)
 
+val valid_session_later: i:timestamp -> j:timestamp -> p:principal -> si:nat -> vi:nat -> st:session_st ->
+  Lemma (ensures (valid_session i p si vi st /\ later_than j i ==> valid_session j p si vi st))
+
+let oyrs_session_st_inv_later (i:timestamp) (j:timestamp) (p:principal) (si:nat) (vi:nat) (state:bytes) :
+  Lemma ((oyrs_session_st_inv i p si vi state /\ later_than j i) ==> oyrs_session_st_inv j p si vi state)
+= // Proving the first clause
+  LC.can_flow_later i j (readers [V p si vi]) (readers [V p si vi]);
+  LC.is_valid_later MSG.oyrs_global_usage i j state;
+  assert(MSG.is_msg i state (readers [V p si vi]) /\ later_than j i ==> MSG.is_msg j state (readers [V p si vi]));
+  // Second clause
+  match parse_session_st state with
+  | Success st -> valid_session_later i j p si vi st;()
+  | _ -> ()
+
 let oyrs_preds: LR.preds = {
   LR.global_usage = MSG.oyrs_global_usage;
   LR.trace_preds = {
     LR.can_trigger_event = (fun idx s e -> False);
     LR.session_st_inv = oyrs_session_st_inv;
-    LR.session_st_inv_later = (fun i j p si vi st -> admit());
+    LR.session_st_inv_later = oyrs_session_st_inv_later;
     LR.session_st_inv_lemma = (fun i p si vi st -> ())
   }
 }
