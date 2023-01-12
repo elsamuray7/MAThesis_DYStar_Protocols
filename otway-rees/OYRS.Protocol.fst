@@ -33,6 +33,7 @@ let install_sk_at_auth_server #i srv p sk =
   new_session #oyrs_preds #now srv new_sess_idx 0 ser_st
 
 let initiator_send_msg_1 a a_si =
+  // get initiator session
   let now = global_timestamp () in
   let (|a_vi,ser_st|) = get_session #oyrs_preds #now a a_si in
 
@@ -42,7 +43,7 @@ let initiator_send_msg_1 a a_si =
     let (|_,c|) = rand_gen #oyrs_preds public (nonce_usage "conv_id") in
     let (|_,n_a|) = rand_gen #oyrs_preds (readers [P a; P srv]) (nonce_usage "nonce_i") in
 
-    // encode and send first message
+    // create and send first message
     let ev1 = EncMsg1 n_a c a b in
     let now = global_timestamp () in
     let ser_ev1 = serialize_encval now ev1 (get_label oyrs_key_usages k_as) in
@@ -63,3 +64,45 @@ let initiator_send_msg_1 a a_si =
     send_m1_idx
   )
   | _ -> error "i_send_m1: wrong session"
+
+let responder_send_msg_2 b m1_idx b_si =
+  // get responder session
+  let now = global_timestamp () in
+  let (|b_vi,ser_st|) = get_session #oyrs_preds #now b b_si in
+
+  match parse_session_st ser_st with
+  | Success (ResponderInit srv k_bs) -> (
+    // receive and parse first message
+    let (|_,a,ser_msg1|) = receive_i #oyrs_preds m1_idx b in
+
+    match parse_msg ser_msg1 with
+    | Success (Msg1 c a b' c_ev_a) -> (
+      if b <> b' then error "r_send_m2: message was intended for different principal"
+      else
+        // generate responder nonce
+        let (|_,n_b|) = rand_gen #oyrs_preds (readers [P b; P srv]) (nonce_usage "nonce_r") in
+
+        // create and send second message
+        let ev2 = EncMsg2 n_b c a b in
+        let now = global_timestamp () in
+        let ser_ev2 = serialize_encval now ev2 (get_label oyrs_key_usages k_bs) in
+        let c_ev2 = aead_enc #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") ser_ev2 (string_to_bytes #oyrs_global_usage #now "ev2") in
+
+        let c_ev_a:msg oyrs_global_usage now public = c_ev_a in
+        let msg2 = Msg2 c a b c_ev_a c_ev2 in
+        let now = global_timestamp () in
+        let ser_msg2 = serialize_msg now msg2 in
+
+        let send_m2_idx = send #oyrs_preds b srv ser_msg2 in
+
+        // update responder session
+        let st_r_m2 = ResponderSentMsg2 srv k_bs a c n_b in
+        let now = global_timestamp () in
+        let ser_st = serialize_session_st now b b_si b_vi st_r_m2 in
+        update_session #oyrs_preds #now b b_si b_vi ser_st;
+
+        send_m2_idx
+    )
+    | _ -> error "r_send_m2: wrong message"
+  )
+  | _ -> error "r_send_m2: wrong session"

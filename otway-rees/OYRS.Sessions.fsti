@@ -40,7 +40,8 @@ let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
   | AuthServerSession pri k_pri_srv -> MSG.is_msg i k_pri_srv (readers [P p])
   | InitiatorInit srv k_as b ->
     is_aead_key i k_as (readers [P p; P srv]) "sk_i_srv"
-  | ResponderInit srv k_bs -> is_labeled i k_bs (readers [P p; P srv])
+  | ResponderInit srv k_bs ->
+    is_aead_key i k_bs (readers [P p; P srv]) "sk_r_srv"
   | InitiatorSentMsg1 srv k_as b c n_a ->
     is_labeled i k_as (readers [P p; P srv]) /\
     is_labeled i c public /\

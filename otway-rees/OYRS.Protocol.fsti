@@ -50,6 +50,7 @@ val initiator_send_msg_1:
 val responder_send_msg_2:
   responder:principal ->
   message_idx: nat ->
+  r_sess_idx:nat ->
   LCrypto (message_idx:nat) (pki oyrs_preds)
   (requires fun t0 ->  message_idx < trace_len t0)
   (ensures fun t0 msg_idx t1 -> msg_idx < trace_len t1 /\ (trace_len t0 < trace_len t1))

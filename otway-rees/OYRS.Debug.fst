@@ -31,6 +31,7 @@ let benign_attacker () =
   install_sk_at_auth_server #t_bs srv b k_bs;
 
   let msg1_idx = initiator_send_msg_1 a a_si in
+  let msg2_idx = responder_send_msg_2 b msg1_idx b_si in
 
   ()
 
