@@ -13,6 +13,7 @@ module LR = LabeledRuntimeAPI
 // TODO: move to common util module
 
 let is_labeled i b l = LC.is_labeled MSG.oyrs_global_usage i b l
+let is_aead_key i b l s = LC.is_aead_key MSG.oyrs_global_usage i b l s
 
 let str_to_bytes #i s = LC.string_to_bytes #(MSG.oyrs_global_usage) #i s
 let concat #i #l b1 b2 = LC.concat #(MSG.oyrs_global_usage) #i #l b1 b2
@@ -37,7 +38,8 @@ implementation for usage in other modules *)
 let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
   match st with
   | AuthServerSession pri k_pri_srv -> MSG.is_msg i k_pri_srv (readers [P p])
-  | InitiatorInit srv k_as b -> is_labeled i k_as (readers [P p; P srv])
+  | InitiatorInit srv k_as b ->
+    is_aead_key i k_as (readers [P p; P srv]) "sk_i_srv"
   | ResponderInit srv k_bs -> is_labeled i k_bs (readers [P p; P srv])
   | InitiatorSentMsg1 srv k_as b c n_a ->
     is_labeled i k_as (readers [P p; P srv]) /\
