@@ -4,13 +4,6 @@ module OYRS.Messages
 module LC = LabeledCryptoAPI
 
 
-let valid_encval i ev l =
-  match ev with
-  | EncMsg1 n_a c a b -> is_msg i n_a l /\ is_msg i c l
-  | EncMsg2 n_b c a b -> is_msg i n_b l /\ is_msg i c l
-  | EncMsg3_I n_a k_ab -> is_msg i n_a l /\ is_msg i k_ab l
-  | EncMsg3_R n_b k_ab -> is_msg i n_b l /\ is_msg i k_ab l
-
 let serialize_encval i ev l =
   match ev with
   | EncMsg1 n_a c a b ->
@@ -76,13 +69,6 @@ let parse_encval #i #l (sev:msg i l) =
 
 let parse_serialize_encval_lemma i ev l = ()
 
-
-let valid_message i m =
-  match m with
-  | Msg1 c a b ev_a -> is_msg i c public
-  | Msg2 c a b ev_a ev_b -> is_msg i c public
-  | Msg3 c ev_a ev_b -> is_msg i c public
-  | Msg4 c ev_a -> is_msg i c public
 
 let serialize_msg i m =
   match m with

@@ -38,7 +38,12 @@ noeq type encval =
   | EncMsg3_I: n_a:bytes -> k_ab:bytes -> encval
   | EncMsg3_R: n_b:bytes -> k_ab:bytes -> encval
 
-val valid_encval: i:nat -> ev:encval -> l:label -> Type0
+let valid_encval (i:nat) (ev:encval) (l:label) =
+  match ev with
+  | EncMsg1 n_a c a b -> is_msg i n_a l /\ is_msg i c l
+  | EncMsg2 n_b c a b -> is_msg i n_b l /\ is_msg i c l
+  | EncMsg3_I n_a k_ab -> is_msg i n_a l /\ is_msg i k_ab l
+  | EncMsg3_R n_b k_ab -> is_msg i n_b l /\ is_msg i k_ab l
 
 val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> msg i l
 val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
@@ -59,7 +64,12 @@ noeq type message (i:nat) =
   | Msg3: c:bytes -> ev_a:msg i public -> ev_b:msg i public -> message i
   | Msg4: c:bytes -> ev_a:msg i public -> message i
 
-val valid_message: i:nat -> m:(message i) -> Type0
+let valid_message (i:nat) (m:message i) =
+  match m with
+  | Msg1 c a b ev_a -> is_msg i c public
+  | Msg2 c a b ev_a ev_b -> is_msg i c public
+  | Msg3 c ev_a ev_b -> is_msg i c public
+  | Msg4 c ev_a -> is_msg i c public
 
 val serialize_msg: i:nat -> m:(message i){valid_message i m} -> msg i public
 val parse_msg: #i:nat -> sm:(msg i public) -> r:(result (message i))
