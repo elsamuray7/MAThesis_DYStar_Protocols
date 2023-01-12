@@ -139,53 +139,62 @@ let server_send_msg_3 srv msg2_idx =
 
       // decrypt parts of message encrypted by initiator and responder, respectively
       let c_ev_a:msg oyrs_global_usage now public = c_ev_a in
-      let ser_ev_a = (match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") c_ev_a (string_to_bytes #oyrs_global_usage #now "ev1") with
-      | Success ser_ev_a -> ser_ev_a
-      | Error e -> error ("srv_send_m3: decryption of initiator part failed: " ^ e)) in
+      match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") c_ev_a (string_to_bytes #oyrs_global_usage #now "ev1") with
+      | Success ser_ev_a -> (
+        let c_ev_b:msg oyrs_global_usage now public = c_ev_b in
+        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev1") with
+        | Success ser_ev_b -> (
+          // parse the decrypted message parts
+          match parse_encval ser_ev_a with
+          | Success (EncMsg1 n_a c_a a_a b_a) -> (
+            match parse_encval ser_ev_b with
+            | Success (EncMsg2 n_b c_b a_b b_b) -> (
+              if c_a <> c_b || a_a <> a_b || b_a <> b_b then error "srv_send_m3: encrypted parts of initiator and responder do not match"
+              else
+                // generate shared conversation key between initiator and responder
+                let (|_,k_ab|) = rand_gen #oyrs_preds (readers [P srv; P a; P b]) (aead_usage "sk_i_r") in
 
-      let c_ev_b:msg oyrs_global_usage now public = c_ev_b in
-      let ser_ev_b = (match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev1") with
-                     | Success ser_ev_b -> ser_ev_b
-                     | Error e -> error ("srv_send_m3: decryption of responder part failed: " ^ e)) in
+                // create and send third message
+                let ev3_i = EncMsg3_I n_a k_ab in
+                let now = global_timestamp () in
+                includes_can_flow_lemma now [P srv; P a; P b] [P a; P srv];
+                let ser_ev3_i = serialize_encval now ev3_i (get_label oyrs_key_usages k_as) in
+                let c_ev3_i = aead_enc #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") ser_ev3_i (string_to_bytes #oyrs_global_usage #now "ev3_i") in
 
-      // parse the decrypted message parts
-      let (EncMsg1 n_a c_a a_a b_a) = (match parse_encval ser_ev_a with
-                                      | Success (EncMsg1 n_a c_a a_a b_a) -> (EncMsg1 n_a c_a a_a b_a)
-                                      | _ -> error "srv_send_m3: wrong initiator encval") in
+                let ev3_r = EncMsg3_R n_b k_ab in
+                let now = global_timestamp () in
+                includes_can_flow_lemma now [P srv; P a; P b] [P b; P srv];
+                let ser_ev3_r = serialize_encval now ev3_r (get_label oyrs_key_usages k_bs) in
+                let c_ev3_r = aead_enc #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") ser_ev3_r (string_to_bytes #oyrs_global_usage #now "ev3_r") in
 
-      let (EncMsg2 n_b c_b a_b b_b) = (match parse_encval ser_ev_b with
-                                      | Success (EncMsg2 n_b c_b a_b b_b) -> (EncMsg1 n_b c_b a_b b_b)
-                                      | _ -> error "srv_send_m3: wrong responder encval") in
+                let msg3 = Msg3 c c_ev3_i c_ev3_r in
+                let now = global_timestamp () in
+                let ser_msg3 = serialize_msg now msg3 in
 
-      if c_a <> c_b || a_a <> a_b || b_a <> b_b then error "srv_send_m3: encrypted parts of initiator and responder do not match"
-      else
-        // generate shared conversation key between initiator and responder
-        let (|_,k_ab|) = rand_gen #oyrs_preds (readers [P srv; P a; P b]) (aead_usage "sk_i_r") in
+                let send_m3_idx = send #oyrs_preds #now srv b ser_msg3 in
 
-        // create and send third message
-        let ev3_i = EncMsg3_I n_a k_ab in
-        let now = global_timestamp () in
-        let ser_ev3_i = serialize_encval now ev3_i (get_label oyrs_key_usages k_as) in
-        let c_ev3_i = aead_enc #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") ser_ev3_i (string_to_bytes #oyrs_global_usage #now "ev3_i") in
+                // store server session
+                let new_sess_idx = new_session_number #oyrs_preds srv in
+                let st_srv_sent_m3 = AuthServerSentMsg3 a b c n_a n_b k_ab in
+                let now = global_timestamp () in
+                assert(is_publishable oyrs_global_usage now c);
+                assert(is_labeled oyrs_global_usage now k_as (readers [P a; P srv]));
+                assert(is_labeled oyrs_global_usage now k_bs (readers [P b; P srv]));
+                assert(is_msg oyrs_global_usage now n_a (get_label oyrs_key_usages k_as));
+                assert(is_msg oyrs_global_usage now n_b (get_label oyrs_key_usages k_bs));
+                includes_can_flow_lemma now [P a; P srv] [P srv];
+                includes_can_flow_lemma now [P b; P srv] [P srv];
+                let ser_st = serialize_session_st now srv new_sess_idx 0 st_srv_sent_m3 in
+                new_session #oyrs_preds #now srv new_sess_idx 0 ser_st;
 
-        let ev3_r = EncMsg3_R n_b k_ab in
-        let now = global_timestamp () in
-        let ser_ev3_r = serialize_encval now ev3_r (get_label oyrs_key_usages k_bs) in
-        let c_ev3_r = aead_enc #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") ser_ev3_r (string_to_bytes #oyrs_global_usage #now "ev3_r") in
-
-        let msg3 = Msg3 c c_ev3_i c_ev3_r in
-        let now = global_timestamp () in
-        let ser_msg3 = serialize_msg now msg3 in
-
-        let send_m3_idx = send #oyrs_preds #now srv b ser_msg3 in
-
-        // store server session
-        let new_sess_idx = new_session_number #oyrs_preds srv in
-        let st_srv_sent_m3 = AuthServerSentMsg3 a b c n_a n_b k_ab in
-        let now = global_timestamp () in
-        let ser_st = serialize_session_st now srv new_sess_idx 0 st_srv_sent_m3 in
-        new_session #oyrs_preds #now srv new_sess_idx 0 ser_st;
-
-        (new_sess_idx, send_m3_idx)
+                (new_sess_idx, send_m3_idx)
+            )
+            | _ -> error "srv_send_m3: wrong responder encval"
+          )
+          | _ -> error "srv_send_m3: wrong initiator encval"
+        )
+        | Error e -> error ("srv_send_m3: decryption of responder part failed: " ^ e)
+      )
+      | Error e -> error ("srv_send_m3: decryption of initiator part failed: " ^ e)
   )
   | _ -> error "srv_send_m3: wrong message"
