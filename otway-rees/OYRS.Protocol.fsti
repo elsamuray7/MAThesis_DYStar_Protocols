@@ -16,26 +16,27 @@ val initiator_init:
   initiator:principal ->
   server:principal ->
   responder:principal ->
-  LCrypto ((i:timestamp & secret oyrs_global_usage i (readers [P initiator; P server]) (aead_usage "sk_i_srv")) * state_session_idx:nat) (pki oyrs_preds)
+  LCrypto ((i:timestamp & usage_str:string & secret oyrs_global_usage i (readers [P initiator; P server]) (aead_usage usage_str)) * state_session_idx:nat) (pki oyrs_preds)
   (requires (fun t0 -> True))
-  (ensures (fun t0 ((|i,s|), si) t1 ->
+  (ensures (fun t0 ((|i,us,s|), si) t1 ->
     i == trace_len t0 /\ trace_len t1 > trace_len t0 /\
-    was_rand_generated_at (trace_len t0) s (readers [P initiator; P server]) (aead_usage "sk_i_srv")))
+    was_rand_generated_at (trace_len t0) s (readers [P initiator; P server]) (aead_usage us)))
 
 val responder_init:
   responder:principal ->
   server:principal ->
-  LCrypto ((i:timestamp & secret oyrs_global_usage i (readers [P responder; P server]) (aead_usage "sk_r_srv")) * state_session_idx:nat) (pki oyrs_preds)
+  LCrypto ((i:timestamp & usage_str:string & secret oyrs_global_usage i (readers [P responder; P server]) (aead_usage usage_str)) * state_session_idx:nat) (pki oyrs_preds)
   (requires (fun t0 -> True))
-  (ensures (fun t0 ((|i,s|), si) t1 ->
+  (ensures (fun t0 ((|i,us,s|), si) t1 ->
     i == trace_len t0 /\ trace_len t1 > trace_len t0 /\
-    was_rand_generated_at (trace_len t0) s (readers [P responder; P server]) (aead_usage "sk_r_srv")))
+    was_rand_generated_at (trace_len t0) s (readers [P responder; P server]) (aead_usage us)))
 
 val install_sk_at_auth_server:
   #i:nat ->
+  #us:string ->
   server:principal ->
   p:principal ->
-  sk:(msg oyrs_global_usage i (readers [P p; P server])) ->
+  sk:(aead_key oyrs_global_usage i (readers [P p; P server]) us) ->
   LCrypto unit (pki oyrs_preds)
   (requires fun t0 -> i < trace_len t0)
   (ensures fun t0 r t1 -> trace_len t1 == trace_len t0 + 1)

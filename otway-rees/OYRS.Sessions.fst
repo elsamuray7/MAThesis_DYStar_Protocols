@@ -3,15 +3,16 @@ module OYRS.Sessions
 
 let serialize_session_st i p si vi st =
   match st with
-  | AuthServerSession pri k_pri_srv ->
+  | AuthServerSession pri k_pri_srv us ->
     let tag = str_to_bytes #i "srv_sess" in
     let pri_bytes = str_to_bytes #i pri in
+    let us_bytes = str_to_bytes #i us in
     let _ = assert(valid_session i p si vi st) in
     let _ = assert(MSG.is_msg i k_pri_srv (readers [P p])) in
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_pri_srv) (readers [P p]) (readers [V p si vi]);
     // TODO: why assert needed??
     let _ = assert(MSG.is_msg i k_pri_srv (readers [V p si vi])) in
-    concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) pri_bytes k_pri_srv)
+    concat #i #(readers [V p si vi]) tag (concat #i #(readers [V p si vi]) pri_bytes (concat #i #(readers [V p si vi]) k_pri_srv us_bytes))
   | InitiatorInit srv k_as b ->
     let tag = str_to_bytes #i "i_init" in
     let srv_bytes = str_to_bytes #i srv in
@@ -58,9 +59,11 @@ let parse_session_st sst =
   bytes_to_string tag_bytes `bind` (fun tag ->
   match tag with
   | "srv_sess" ->
-    split rest `bind` (fun (pri_bytes, k_pri_srv) ->
+    split rest `bind` (fun (pri_bytes, rest) ->
     bytes_to_string pri_bytes `bind` (fun pri ->
-    Success (AuthServerSession pri k_pri_srv)))
+    split rest `bind` (fun (k_pri_srv, us_bytes) ->
+    bytes_to_string us_bytes `bind` (fun us ->
+    Success (AuthServerSession pri k_pri_srv us)))))
   | "i_init" ->
     split rest `bind` (fun (srv_bytes, rest) ->
     bytes_to_string srv_bytes `bind` (fun srv ->
@@ -114,8 +117,12 @@ let parse_session_st sst =
 #push-options "--z3rlimit 100"
 let parse_serialize_session_st_lemma i p si vi st =
   match st with
-  | AuthServerSession pri k_pri_srv ->
-    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_pri_srv) (readers [P p]) (readers [V p si vi])
+  | AuthServerSession pri k_pri_srv us ->
+    let _ = assert(valid_session i p si vi st) in
+    let _ = assert(MSG.is_msg i k_pri_srv (readers [P p])) in
+    LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages k_pri_srv) (readers [P p]) (readers [V p si vi]);
+    // TODO: why assert needed??
+    assert(MSG.is_msg i k_pri_srv (readers [V p si vi]))
   | ResponderSentMsg2 srv k_bs a c n_b ->
     LC.can_flow_transitive i (LC.get_label MSG.oyrs_key_usages c) public (readers [V p si vi])
   | AuthServerSentMsg3 a b c n_a n_b k_ab ->
