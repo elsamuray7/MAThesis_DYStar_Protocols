@@ -21,7 +21,7 @@ let concat #i #l b1 b2 = LC.concat #(MSG.oyrs_global_usage) #i #l b1 b2
 
 noeq type session_st =
   (* Auth server session for secret keys shared with principals *)
-  | AuthServerSession: p:principal -> k_ps:bytes -> session_st
+  | AuthServerSession: p:principal -> k_ps:bytes -> us:string -> session_st
   (* Initial knowledge of principals *)
   | InitiatorInit: srv:principal -> k_as:bytes -> b:principal -> session_st
   | ResponderInit: srv:principal -> k_bs:bytes -> session_st
@@ -37,7 +37,8 @@ implementation for usage in other modules *)
 
 let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
   match st with
-  | AuthServerSession pri k_pri_srv -> MSG.is_msg i k_pri_srv (readers [P p])
+  | AuthServerSession pri k_pri_srv us ->
+    is_aead_key i k_pri_srv (readers [P pri; P p]) us
   | InitiatorInit srv k_as b ->
     is_aead_key i k_as (readers [P p; P srv]) "sk_i_srv"
   | ResponderInit srv k_bs ->
@@ -62,7 +63,7 @@ let valid_session_later (i j:timestamp) (p:principal) (si vi:nat) (st:session_st
   Lemma (ensures (valid_session i p si vi st /\ later_than j i ==> valid_session j p si vi st))
 = LC.can_flow_later i j (readers [P p]) (readers [P p]);
   match st with
-  | AuthServerSession pri k_pri_srv ->
+  | AuthServerSession pri k_pri_srv us ->
     LC.is_valid_later MSG.oyrs_global_usage i j k_pri_srv
   | ResponderSentMsg2 srv k_bs a c n_b ->
     LC.is_valid_later MSG.oyrs_global_usage i j c
