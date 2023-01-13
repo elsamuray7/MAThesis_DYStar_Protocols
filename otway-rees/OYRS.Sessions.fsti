@@ -48,7 +48,7 @@ let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
     is_labeled i c public /\
     is_labeled i n_a (readers [P p; P srv])
   | ResponderSentMsg2 srv k_bs a c n_b ->
-    is_labeled i k_bs (readers [P p; P srv]) /\
+    is_aead_key i k_bs (readers [P p; P srv]) "sk_r_srv" /\
     MSG.is_msg i c public /\
     is_labeled i n_b (readers [P p; P srv])
   | AuthServerSentMsg3 a b c n_a n_b k_ab ->

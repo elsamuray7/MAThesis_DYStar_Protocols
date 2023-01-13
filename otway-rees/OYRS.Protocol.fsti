@@ -65,8 +65,8 @@ val server_send_msg_3:
 
 val responder_send_msg_4:
   responder:principal ->
-  sess_idx_resp:nat ->
   message_idx:nat ->
+  r_sess_idx:nat ->
   LCrypto (message_idx:nat) (pki oyrs_preds)
   (requires fun t0 ->  message_idx < trace_len t0)
   (ensures fun t0 msg_idx t1 -> msg_idx < trace_len t1 /\ (trace_len t0 < trace_len t1))

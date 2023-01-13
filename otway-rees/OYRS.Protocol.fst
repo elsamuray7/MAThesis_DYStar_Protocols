@@ -198,3 +198,50 @@ let server_send_msg_3 srv msg2_idx =
       | Error e -> error ("srv_send_m3: decryption of initiator part failed: " ^ e)
   )
   | _ -> error "srv_send_m3: wrong message"
+
+let responder_send_msg_4 b msg3_idx b_si =
+  // get responder session
+  let now = global_timestamp () in
+  let (|b_vi,ser_st|) = get_session #oyrs_preds #now b b_si in
+
+  match parse_session_st ser_st with
+  | Success (ResponderSentMsg2 srv k_bs a c n_b) -> (
+    // receive and parse third message
+    let (|_,srv',ser_msg3|) = receive_i #oyrs_preds msg3_idx b in
+
+    match parse_msg ser_msg3 with
+    | Success (Msg3 c' c_ev_a c_ev_b) -> (
+      if c <> c' then error "r_send_m4: conversation id in message does not match with the stored id"
+      else
+        // decrypt part of message intended for responder
+        let now = global_timestamp () in
+        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev3_r") with
+        | Success ser_ev_b -> (
+          // parse the decrypted part
+          match parse_encval ser_ev_b with
+          | Success (EncMsg3_R n_b' k_ab) -> (
+            if n_b <> n_b' then error "r_send_m4: responder nonce in message does not match with the stored nonce"
+            else
+              // create and send fourth message
+              let msg4 = Msg4 c c_ev_a in
+              let now = global_timestamp () in
+              let ser_msg4 = serialize_msg now msg4 in
+
+              let send_m4_idx = send #oyrs_preds #now b a ser_msg4 in
+
+              // update responder session
+              let st_r_sent_m4 = ResponderSentMsg4 srv a k_ab in
+              let now = global_timestamp () in
+              includes_can_flow_lemma now [P b; P srv] [P b];
+              let ser_st = serialize_session_st now b b_si b_vi st_r_sent_m4 in
+              update_session #oyrs_preds #now b b_si b_vi ser_st;
+
+              send_m4_idx
+          )
+          | _ -> error "r_send_m4: wrong encval"
+        )
+        | Error e -> error ("r_send_m4: decryption of part intended for responder failed: " ^ e)
+    )
+    | _ -> error "r_send_m4: wrong message"
+  )
+  | _ -> error "r_send_m4: wrong session"
