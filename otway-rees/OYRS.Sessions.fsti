@@ -44,7 +44,7 @@ let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
   | ResponderInit srv k_bs ->
     is_aead_key i k_bs (readers [P p; P srv]) "sk_r_srv"
   | InitiatorSentMsg1 srv k_as b c n_a ->
-    is_labeled i k_as (readers [P p; P srv]) /\
+    is_aead_key i k_as (readers [P p; P srv]) "sk_i_srv" /\
     is_labeled i c public /\
     is_labeled i n_a (readers [P p; P srv])
   | ResponderSentMsg2 srv k_bs a c n_b ->

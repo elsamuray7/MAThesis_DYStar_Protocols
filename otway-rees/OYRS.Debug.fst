@@ -33,8 +33,8 @@ let benign_attacker () =
   let msg1_idx = initiator_send_msg_1 a a_si in
   let msg2_idx = responder_send_msg_2 b msg1_idx b_si in
   let (srv_si, msg3_idx) = server_send_msg_3 srv msg2_idx in
-
-  ()
+  let msg4_idx = responder_send_msg_4 b msg3_idx b_si in
+  initiator_recv_msg_4 a msg4_idx a_si
 
 let benign () : LCrypto unit (pki oyrs_preds)
   (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))

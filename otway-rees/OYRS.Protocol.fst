@@ -209,39 +209,83 @@ let responder_send_msg_4 b msg3_idx b_si =
     // receive and parse third message
     let (|_,srv',ser_msg3|) = receive_i #oyrs_preds msg3_idx b in
 
-    match parse_msg ser_msg3 with
-    | Success (Msg3 c' c_ev_a c_ev_b) -> (
-      if c <> c' then error "r_send_m4: conversation id in message does not match with the stored id"
-      else
-        // decrypt part of message intended for responder
-        let now = global_timestamp () in
-        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev3_r") with
-        | Success ser_ev_b -> (
-          // parse the decrypted part
-          match parse_encval ser_ev_b with
-          | Success (EncMsg3_R n_b' k_ab) -> (
-            if n_b <> n_b' then error "r_send_m4: responder nonce in message does not match with the stored nonce"
-            else
-              // create and send fourth message
-              let msg4 = Msg4 c c_ev_a in
-              let now = global_timestamp () in
-              let ser_msg4 = serialize_msg now msg4 in
+    if srv <> srv' then error "r_send_m4: stored server does not match with actual server that sent the third message"
+    else
+      match parse_msg ser_msg3 with
+      | Success (Msg3 c' c_ev_a c_ev_b) -> (
+        if c <> c' then error "r_send_m4: conversation id in message does not match with the stored id"
+        else
+          // decrypt part of message intended for responder
+          let now = global_timestamp () in
+          match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev3_r") with
+          | Success ser_ev_b -> (
+            // parse the decrypted part
+            match parse_encval ser_ev_b with
+            | Success (EncMsg3_R n_b' k_ab) -> (
+              if n_b <> n_b' then error "r_send_m4: responder nonce in message does not match with the stored nonce"
+              else
+                // create and send fourth message
+                let msg4 = Msg4 c c_ev_a in
+                let now = global_timestamp () in
+                let ser_msg4 = serialize_msg now msg4 in
 
-              let send_m4_idx = send #oyrs_preds #now b a ser_msg4 in
+                let send_m4_idx = send #oyrs_preds #now b a ser_msg4 in
 
-              // update responder session
-              let st_r_sent_m4 = ResponderSentMsg4 srv a k_ab in
-              let now = global_timestamp () in
-              includes_can_flow_lemma now [P b; P srv] [P b];
-              let ser_st = serialize_session_st now b b_si b_vi st_r_sent_m4 in
-              update_session #oyrs_preds #now b b_si b_vi ser_st;
+                // update responder session
+                let st_r_sent_m4 = ResponderSentMsg4 srv a k_ab in
+                let now = global_timestamp () in
+                includes_can_flow_lemma now [P b; P srv] [P b];
+                let ser_st = serialize_session_st now b b_si b_vi st_r_sent_m4 in
+                update_session #oyrs_preds #now b b_si b_vi ser_st;
 
-              send_m4_idx
+                send_m4_idx
+            )
+            | _ -> error "r_send_m4: wrong encval"
           )
-          | _ -> error "r_send_m4: wrong encval"
-        )
-        | Error e -> error ("r_send_m4: decryption of part intended for responder failed: " ^ e)
-    )
-    | _ -> error "r_send_m4: wrong message"
+          | Error e -> error ("r_send_m4: decryption of part intended for responder failed: " ^ e)
+      )
+      | _ -> error "r_send_m4: wrong message"
   )
   | _ -> error "r_send_m4: wrong session"
+
+let initiator_recv_msg_4 a msg4_idx a_si =
+  // get initiator session
+  let now = global_timestamp () in
+  let (|a_vi,ser_st|) = get_session #oyrs_preds #now a a_si in
+
+  match parse_session_st ser_st with
+  | Success (InitiatorSentMsg1 srv k_as b c n_a) -> (
+    // receive and parse fourth message
+    let (|_,b',ser_msg4|) = receive_i #oyrs_preds msg4_idx a in
+
+    if b <> b' then error "i_recv_m4: stored responder does not match with actual responder that sent the fourth message"
+    else
+      match parse_msg ser_msg4 with
+      | Success (Msg4 c' c_ev_a) -> (
+        if c <> c' then error "i_recv_m4: conversation id in message does not match with the stored id"
+        else
+          // decrypt part of message intended for initiator
+          let now = global_timestamp () in
+          match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") c_ev_a (string_to_bytes #oyrs_global_usage #now "ev3_i") with
+          | Success ser_ev_a -> (
+            // parse the decrypted part
+            match parse_encval ser_ev_a with
+            | Success (EncMsg3_I n_a' k_ab) -> (
+              if n_a <> n_a' then error "i_recv_m4: initiator nonce in message does not match with the stored nonce"
+              else
+                // update initiator session
+                let st_i_rcvd_m4 = InitiatorRecvedMsg4 srv b k_ab in
+                let now = global_timestamp () in
+                includes_can_flow_lemma now [P a; P srv] [P a];
+                let ser_st = serialize_session_st now a a_si a_vi st_i_rcvd_m4 in
+                update_session #oyrs_preds #now a a_si a_vi ser_st;
+
+                ()
+            )
+            | _ -> error "i_recv_m4: wrong encval"
+          )
+          | Error e -> error ("i_recv_m4: decryption of part intended for initiator failed: " ^ e)
+      )
+      | _ -> error "i_recv_m4: wrong message"
+  )
+  | _ -> error "i_recv_m4: wrong session"

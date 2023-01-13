@@ -73,8 +73,8 @@ val responder_send_msg_4:
 
 val initiator_recv_msg_4:
   initiator:principal ->
-  sess_idx_init:nat ->
   message_idx:nat ->
+  i_sess_idx:nat ->
   LCrypto unit (pki oyrs_preds)
   (requires fun t0 -> message_idx < trace_len t0)
   (ensures fun t0 _ t1 -> True)
