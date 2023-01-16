@@ -142,7 +142,7 @@ let server_send_msg_3 srv msg2_idx =
       match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") c_ev_a (string_to_bytes #oyrs_global_usage #now "ev1") with
       | Success ser_ev_a -> (
         let c_ev_b:msg oyrs_global_usage now public = c_ev_b in
-        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev1") with
+        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev2") with
         | Success ser_ev_b -> (
           // parse the decrypted message parts
           match parse_encval ser_ev_a with
