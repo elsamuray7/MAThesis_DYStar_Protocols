@@ -1,2 +1,5 @@
 # build files
 ocaml-symbolic
+
+# type check cache
+.depend.symbolic
