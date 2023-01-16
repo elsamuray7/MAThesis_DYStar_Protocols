@@ -78,6 +78,7 @@ let responder_send_msg_2 b msg1_idx b_si =
     match parse_msg ser_msg1 with
     | Success (Msg1 c a' b' c_ev_a) -> (
       if b <> b' then error "r_send_m2: responder in message does not match with actual responder"
+      // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
       else if a <> a' then error "r_send_m2: initiator in message does not match with actual initiator"
       else
         // generate responder nonce
@@ -131,6 +132,7 @@ let server_send_msg_3 srv msg2_idx =
 
   match parse_msg ser_msg2 with
   | Success (Msg2 c a b' c_ev_a c_ev_b) -> (
+    // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
     if b <> b' then error "srv_send_m3: responder in message does not match with actual responder"
     else
       // look up auth sessions of initiator and responder, containg shared secrets with server
@@ -209,6 +211,7 @@ let responder_send_msg_4 b msg3_idx b_si =
     // receive and parse third message
     let (|_,srv',ser_msg3|) = receive_i #oyrs_preds msg3_idx b in
 
+    // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
     if srv <> srv' then error "r_send_m4: stored server does not match with actual server that sent the third message"
     else
       match parse_msg ser_msg3 with
@@ -258,6 +261,7 @@ let initiator_recv_msg_4 a msg4_idx a_si =
     // receive and parse fourth message
     let (|_,b',ser_msg4|) = receive_i #oyrs_preds msg4_idx a in
 
+    // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
     if b <> b' then error "i_recv_m4: stored responder does not match with actual responder that sent the fourth message"
     else
       match parse_msg ser_msg4 with
