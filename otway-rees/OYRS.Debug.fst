@@ -9,6 +9,7 @@ open LabeledCryptoAPI
 open LabeledRuntimeAPI
 open LabeledPKI
 open AttackerAPI
+open SecurityLemmas
 open OYRS.Sessions
 open OYRS.Protocol
 open OYRS.Attacker
@@ -47,36 +48,21 @@ let intercept_msg_2_attacker () =
   let a:principal = "initiator" in
   let b:principal = "responder" in
   let srv:principal = "server" in
-  let eve:principal = "eve" in
 
-  let ts0 = global_timestamp () in
   let ((|t_as,us_as,k_as|), a_si) = initiator_init a srv b in
   let ((|t_bs,us_bs,k_bs|), b_si) = responder_init b srv in
   install_sk_at_auth_server #t_as #us_as srv a k_as;
-  let ts1 = global_timestamp () in
   install_sk_at_auth_server #t_bs #us_bs srv b k_bs;
-  let ts2 = global_timestamp () in
 
-  let pr = (pki oyrs_preds) in
-  let tr = get () in
-  assert(valid_trace pr tr);
-
-  let ts_corr_eve = AttackerAPI.compromise eve 0 0 in
-
-  let ts3 = global_timestamp () in
-  assert(was_corrupted_before ts3 eve 0 0);
-  assert(later_than ts3 ts_corr_eve);
-
-  let tr = get () in
-  assert(valid_trace pr tr);
-
-  //let msg1_idx = initiator_send_msg_1 a a_si in
-  //let msg2_idx = responder_send_msg_2 b msg1_idx b_si in
+  let msg1_idx = initiator_send_msg_1 a a_si in
+  let msg2_idx = responder_send_msg_2 b msg1_idx b_si in
   // third message from auth server is discarded
-  //let msg3_idx = attacker_intercept_msg_2 eve srv b msg2_idx in
-  //let msg4_idx = responder_send_msg_4 b msg3_idx b_si in
-  //initiator_recv_msg_4 a msg4_idx a_si;
-  ()
+  let (msg3_idx, conv_key) = attacker_intercept_msg_2 srv b msg2_idx in
+  let msg4_idx = responder_send_msg_4 b msg3_idx b_si in
+  initiator_recv_msg_4 a msg4_idx a_si;
+
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state b b_si conv_key
 
 let benign () : LCrypto unit (pki oyrs_preds)
   (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))
@@ -103,7 +89,7 @@ let main =
   (match r with
   | Error s -> IO.print_string ("ERROR: "^s^"\n")
   | Success _ -> IO.print_string "PROTOCOL RUN: Successful execution of Otway-Rees protocol.\n");
-  IO.print_string "Finished Benign Attacker:\n"
+  IO.print_string "Finished Benign Attacker:\n";
   IO.print_string "Starting Intercept Msg2 Attacker:\n";
   assume(valid_trace (pki oyrs_preds) t0);
   let r,t1 = (reify (intercept_msg_2 ()) t0) in

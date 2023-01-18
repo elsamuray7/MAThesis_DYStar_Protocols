@@ -31,7 +31,7 @@ let principals_and_conv_key_stored_in_auth_server_state
     | _ -> False
   )
 
-let conv_key_is_secret
+let conv_key_stored_in_auth_server_state_is_secret
   server
   set_state_idx
   vv
@@ -52,3 +52,4 @@ let conv_key_is_secret
     | _ -> ()
   )
   | _ -> ()
+
