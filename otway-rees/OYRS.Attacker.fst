@@ -12,12 +12,63 @@ module L = LabeledPKI
 module A = AttackerAPI
 
 
+/// Interception of message 1 attack:
+/// The attacker intercepts the first message initiator -> responder and removes
+/// the principals names from the message. The attacker then sends the resulting
+/// message back to the initiator, who thinks it came from the responder and interprets
+/// the concatenation of the conversation ID and the principals names as the secret
+/// conversation key, which the attacker is able to derive by himself.
+let attacker_intercept_msg_1 (bob alice:principal) (msg1_idx:nat) :
+  Crypto (timestamp * bytes)
+         (requires (fun t0 -> msg1_idx < trace_len t0))
+         (ensures (fun t0 r t1 ->
+         match r with
+         | Error _ -> t0 == t1
+         | Success (n, b) ->
+           A.attacker_modifies_trace t0 t1 /\
+           trace_len t1 = trace_len t0 + 1 /\
+           later_than (trace_len t1) (trace_len t0) /\
+           n = trace_len t0 /\
+           A.attacker_knows_at n b))
+= // receive and parse first message
+  let (|t_m1,ser_msg1|) = A.receive_i msg1_idx bob in
+
+  match
+    A.split ser_msg1 `bind` (fun (tag_bytes, rest) ->
+    A.pub_bytes_to_string tag_bytes `bind` (fun tag ->
+    match tag with
+    | "msg1" ->
+      A.split rest `bind` (fun (c, rest) ->
+      A.split rest `bind` (fun (a_bytes, rest) ->
+      A.split rest `bind` (fun (b_bytes, ev_a) ->
+      Success (c,a_bytes,b_bytes,ev_a))))
+    | t -> Error ("attacker_intercept_m1: wrong message: " ^ t ^ "\n")
+    ))
+  with
+  | Success (c,a_bytes,b_bytes,ev_a) ->
+    // derive the conversation key
+    let now = global_timestamp () in
+    let c = A.pub_bytes_later t_m1 now c in
+    let a_bytes = A.pub_bytes_later t_m1 now a_bytes in
+    let b_bytes = A.pub_bytes_later t_m1 now b_bytes in
+    let conv_key = A.concat c (A.concat a_bytes b_bytes) in
+
+    // create and send malicious "fourth" message
+    let msg4_tag = A.pub_bytes_later 0 now (A.string_to_pub_bytes "msg4") in
+    let ev_a = A.pub_bytes_later t_m1 now ev_a in
+    let ser_msg4 = A.concat msg4_tag (A.concat c ev_a) in
+
+    let send_mal_m4_idx = A.send #now bob alice ser_msg4 in
+
+    (send_mal_m4_idx, conv_key)
+  | Error e -> error e
+
 /// Interception of message 2 attack:
 /// The attacker intercepts the second message responder -> server and removes
 /// the principals names from the message. The attacker then sends the resulting
 /// message back to the responder, who thinks it came from the server and interprets
 /// the concatenation of the conversation ID and the principals names as the secret
-/// conversation key, which the attacker is able to derive by itself.
+/// conversation key, which the attacker is able to derive by himself.
 let attacker_intercept_msg_2 (srv bob:principal) (msg2_idx:nat) :
   Crypto (timestamp * bytes)
          (requires (fun t0 -> msg2_idx < trace_len t0))
@@ -43,7 +94,7 @@ let attacker_intercept_msg_2 (srv bob:principal) (msg2_idx:nat) :
       A.split rest `bind` (fun (b_bytes, rest) ->
       A.split rest `bind` (fun (ev_a, ev_b) ->
       Success (c,a_bytes,b_bytes,ev_a,ev_b)))))
-    | t -> Error ("attacker_intercept_m2: wrong message: " ^ t)
+    | t -> Error ("attacker_intercept_m2: wrong message: " ^ t ^ "\n")
     ))
   with
   | Success (c,a_bytes,b_bytes,ev_a,ev_b) ->

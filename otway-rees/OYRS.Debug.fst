@@ -38,6 +38,29 @@ let benign_attacker () =
   let msg4_idx = responder_send_msg_4 b msg3_idx b_si in
   initiator_recv_msg_4 a msg4_idx a_si
 
+val intercept_msg_1_attacker:
+  unit ->
+  LCrypto unit (pki oyrs_preds)
+  (requires fun _ -> True)
+  (ensures fun _ _ _ -> True)
+
+let intercept_msg_1_attacker () =
+  let a:principal = "initiator" in
+  let b:principal = "responder" in
+  let srv:principal = "server" in
+
+  let ((|t_as,us_as,k_as|), a_si) = initiator_init a srv b in
+  let ((|t_bs,us_bs,k_bs|), b_si) = responder_init b srv in
+  install_sk_at_auth_server #t_as #us_as srv a k_as;
+  install_sk_at_auth_server #t_bs #us_bs srv b k_bs;
+
+  let msg1_idx = initiator_send_msg_1 a a_si in
+  let (msg4_idx, conv_key) = attacker_intercept_msg_1 b a msg1_idx in
+  initiator_recv_msg_4 a msg4_idx a_si;
+
+  // TODO: no mutual authentication either -> proof needed
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key
+
 val intercept_msg_2_attacker:
   unit ->
   LCrypto unit (pki oyrs_preds)
@@ -61,6 +84,7 @@ let intercept_msg_2_attacker () =
   let msg4_idx = responder_send_msg_4 b msg3_idx b_si in
   initiator_recv_msg_4 a msg4_idx a_si;
 
+  // TODO: at least we should get mutual authentication here -> proof needed
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
   attacker_knows_conv_key_stored_in_initiator_or_responder_state b b_si conv_key
 
@@ -69,6 +93,13 @@ let benign () : LCrypto unit (pki oyrs_preds)
 = print_string "start\n";
   let t0 = get() in
   let x = benign_attacker () in
+  print_trace ()
+
+let intercept_msg_1 () : LCrypto unit (pki oyrs_preds)
+  (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))
+= print_string "start\n";
+  let t0 = get() in
+  let x = intercept_msg_1_attacker () in
   print_trace ()
 
 let intercept_msg_2 () : LCrypto unit (pki oyrs_preds)
@@ -90,6 +121,13 @@ let main =
   | Error s -> IO.print_string ("ERROR: "^s^"\n")
   | Success _ -> IO.print_string "PROTOCOL RUN: Successful execution of Otway-Rees protocol.\n");
   IO.print_string "Finished Benign Attacker:\n";
+  IO.print_string "Starting Intercept Msg1 Attacker:\n";
+  assume(valid_trace (pki oyrs_preds) t0);
+  let r,t1 = (reify (intercept_msg_1 ()) t0) in
+  (match r with
+  | Error s -> IO.print_string ("ERROR: "^s^"\n")
+  | Success _ -> IO.print_string "PROTOCOL RUN: Successful execution of Otway-Rees protocol.\n");
+  IO.print_string "Finished Intercept Msg1 Attacker:\n";
   IO.print_string "Starting Intercept Msg2 Attacker:\n";
   assume(valid_trace (pki oyrs_preds) t0);
   let r,t1 = (reify (intercept_msg_2 ()) t0) in
