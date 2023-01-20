@@ -45,8 +45,21 @@ let valid_encval (i:nat) (ev:encval) (l:label) =
   | EncMsg3_I n_a k_ab -> is_msg i n_a l /\ is_msg i k_ab l
   | EncMsg3_R n_b k_ab -> is_msg i n_b l /\ is_msg i k_ab l
 
-val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> msg i l
-val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
+(* Serialized and encrypted encvals with tags *)
+let ser_encval i l = (tag:string & msg i l)
+let enc_encval i = (tag:string & msg i public)
+
+val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> sev:(ser_encval i l)
+  {
+    let (|tag,_|) = sev in
+    match (tag, ev) with
+    | ("ev1", EncMsg1 _ _ _ _)
+    | ("ev2", EncMsg2 _ _ _ _)
+    | ("ev3_i", EncMsg3_I _ _)
+    | ("ev3_r", EncMsg3_R _ _) -> True
+    | _ -> False
+  }
+val parse_encval: #i:nat -> #l:label -> sev:(ser_encval i l) -> r:(result encval)
   {
     match r with
     | Success ev -> valid_encval i ev l
@@ -56,20 +69,33 @@ val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
 val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label ->
   Lemma (requires (valid_encval i ev l))
         (ensures (parse_encval (serialize_encval i ev l) == Success ev))
+        [SMTPat (parse_encval (serialize_encval i ev l))]
+
+val parsed_encval_is_valid_lemma: #i:nat -> #l:label -> sev:(ser_encval i l) ->
+  Lemma (
+          match parse_encval sev with
+          | Success (EncMsg1 n_a c a b) -> valid_encval i (EncMsg1 n_a c a b) l
+          | Success (EncMsg2 n_b c a b) -> valid_encval i (EncMsg2 n_b c a b) l
+          | Success (EncMsg3_I n_a k_ab) -> valid_encval i (EncMsg3_I n_a k_ab) l
+          | Success (EncMsg3_R n_b k_ab) -> valid_encval i (EncMsg3_R n_b k_ab) l
+          | _ -> True
+        )
+        [SMTPat (parse_encval sev)]
 
 
 noeq type message (i:nat) =
-  | Msg1: c:bytes -> a:string -> b:string -> ev_a:msg i public -> message i
-  | Msg2: c:bytes -> a:string -> b:string -> ev_a:msg i public -> ev_b:msg i public -> message i
-  | Msg3: c:bytes -> ev_a:msg i public -> ev_b:msg i public -> message i
-  | Msg4: c:bytes -> ev_a:msg i public -> message i
+  | Msg1: c:bytes -> a:string -> b:string -> ev_a:enc_encval i -> message i
+  | Msg2: c:bytes -> a:string -> b:string -> ev_a:enc_encval i -> ev_b:enc_encval i -> message i
+  | Msg3: c:bytes -> ev_a:enc_encval i -> ev_b:enc_encval i -> message i
+  | Msg4: c:bytes -> ev_a:enc_encval i -> message i
 
 let valid_message (i:nat) (m:message i) =
   match m with
-  | Msg1 c a b ev_a -> is_msg i c public
-  | Msg2 c a b ev_a ev_b -> is_msg i c public
-  | Msg3 c ev_a ev_b -> is_msg i c public
-  | Msg4 c ev_a -> is_msg i c public
+  | Msg1 c a b (|"ev1",ev_a|) -> is_msg i c public
+  | Msg2 c a b (|"ev1",ev_a|) (|"ev2",ev_b|) -> is_msg i c public
+  | Msg3 c (|"ev3_i",ev_a|) (|"ev3_r",ev_b|) -> is_msg i c public
+  | Msg4 c (|"ev3_i",ev_a|) -> is_msg i c public
+  | _ -> False
 
 val serialize_msg: i:nat -> m:(message i){valid_message i m} -> msg i public
 val parse_msg: #i:nat -> sm:(msg i public) -> r:(result (message i))

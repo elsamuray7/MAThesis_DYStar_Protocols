@@ -32,8 +32,10 @@ val principals_and_conv_key_stored_in_auth_server_state:
   (conv_key:bytes) ->
   Type0
 
-/// Ensures secrecy of the conversation key for honest principals
-val conv_key_is_secret:
+/// Ensures secrecy of the generated conversation key for honest principals.
+/// Note: This does not include general secrecy of the conversation key stored
+/// in the states of the initiator and responder, respectively.
+val conv_key_stored_in_auth_server_state_is_secret:
   (server:principal) ->
   (set_state_idx:nat) ->
   (vv:version_vec) ->
