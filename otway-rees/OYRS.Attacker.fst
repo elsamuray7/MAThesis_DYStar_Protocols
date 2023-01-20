@@ -63,7 +63,6 @@ let attacker_intercept_msg_2 (srv bob:principal) (msg2_idx:nat) :
     let ev_a = A.pub_bytes_later t_m2 now ev_a in
     let ev_b = A.pub_bytes_later t_m2 now ev_b in
     let ser_msg3 = A.concat msg3_tag (A.concat c (A.concat ev_a ev_b)) in
-    print_bytes ser_msg3;
 
     let send_mal_m3_idx = A.send #now srv bob ser_msg3 in
 
@@ -89,7 +88,7 @@ let attacker_knows_conv_key_stored_in_initiator_or_responder_state
   let (|_,ser_st|) = L.get_session #(S.oyrs_preds) #now p si in
   match S.parse_session_st ser_st with
   | Success (S.ResponderSentMsg4 srv a k_ab) ->
-    if k_ab = conv_key then () else error "attacker could not derive conversation key"
+    if k_ab = conv_key then () else error "attacker could not derive conversation key\n"
   | Success (S.InitiatorRecvedMsg4 srv b k_ab) ->
-    if k_ab = conv_key then () else error "attacker could not derive conversation key"
+    if k_ab = conv_key then () else error "attacker could not derive conversation key\n"
   | _ -> ()

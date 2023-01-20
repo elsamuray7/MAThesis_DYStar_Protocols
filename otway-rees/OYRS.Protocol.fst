@@ -62,7 +62,7 @@ let initiator_send_msg_1 a a_si =
 
     send_m1_idx
   )
-  | _ -> error "i_send_m1: wrong session"
+  | _ -> error "i_send_m1: wrong session\n"
 
 let responder_send_msg_2 b msg1_idx b_si =
   // get responder session
@@ -76,9 +76,9 @@ let responder_send_msg_2 b msg1_idx b_si =
 
     match parse_msg ser_msg1 with
     | Success (Msg1 c a' b' (|tag_ev_a,c_ev_a|)) -> (
-      if b <> b' then error "r_send_m2: responder in message does not match with actual responder"
+      if b <> b' then error "r_send_m2: responder in message does not match with actual responder\n"
       // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
-      else if a <> a' then error "r_send_m2: initiator in message does not match with actual initiator"
+      else if a <> a' then error "r_send_m2: initiator in message does not match with actual initiator\n"
       else
         // generate responder nonce
         let (|_,n_b|) = rand_gen #oyrs_preds (readers [P b; P srv]) (nonce_usage "nonce_r") in
@@ -103,9 +103,9 @@ let responder_send_msg_2 b msg1_idx b_si =
 
         send_m2_idx
     )
-    | _ -> error "r_send_m2: wrong message"
+    | _ -> error "r_send_m2: wrong message\n"
   )
-  | _ -> error "r_send_m2: wrong session"
+  | _ -> error "r_send_m2: wrong session\n"
 
 let find_auth_server_session_helper (svr:principal) (p:principal) :
   LCrypto (i:timestamp * si:nat * vi:nat * session_st) (pki oyrs_preds)
@@ -120,7 +120,7 @@ let find_auth_server_session_helper (svr:principal) (p:principal) :
   | Some (|si,vi,ser_st|) -> (
     match parse_session_st ser_st with
     | Success (AuthServerSession p sk us) -> (now,si,vi,(AuthServerSession p sk us))
-    | _ -> error "find_auth_server_session_helper: wrong session"
+    | _ -> error "find_auth_server_session_helper: wrong session\n"
   )
   | None -> error ("find_auth_server_session_helper: no session for " ^ p ^ " found")
 
@@ -132,7 +132,7 @@ let server_send_msg_3 srv msg2_idx =
   match parse_msg ser_msg2 with
   | Success (Msg2 c a b' (|tag_ev_a,c_ev_a|) (|tag_ev_b,c_ev_b|)) -> (
     // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
-    if b <> b' then error "srv_send_m3: responder in message does not match with actual responder"
+    if b <> b' then error "srv_send_m3: responder in message does not match with actual responder\n"
     else
       // look up auth sessions of initiator and responder, containg shared secrets with server
       let (now,_,_,(AuthServerSession _ k_as _)) = find_auth_server_session_helper srv a in
@@ -156,7 +156,7 @@ let server_send_msg_3 srv msg2_idx =
             | Success (EncMsg2 n_b c_b a_b b_b) -> (
               parsed_encval_is_valid_lemma tagged_ser_ev_b;
 
-              if c_a <> c_b || a_a <> a_b || b_a <> b_b then error "srv_send_m3: encrypted parts of initiator and responder do not match"
+              if c_a <> c_b || a_a <> a_b || b_a <> b_b then error "srv_send_m3: encrypted parts of initiator and responder do not match\n"
               else
                 // generate shared conversation key between initiator and responder
                 let prev = now in
@@ -228,15 +228,15 @@ let server_send_msg_3 srv msg2_idx =
 
                 (new_sess_idx, send_m3_idx)
             )
-            | _ -> error "srv_send_m3: wrong responder encval"
+            | _ -> error "srv_send_m3: wrong responder encval\n"
           )
-          | _ -> error "srv_send_m3: wrong initiator encval"
+          | _ -> error "srv_send_m3: wrong initiator encval\n"
         )
         | Error e -> error ("srv_send_m3: decryption of responder part failed: " ^ e)
       )
       | Error e -> error ("srv_send_m3: decryption of initiator part failed: " ^ e)
   )
-  | _ -> error "srv_send_m3: wrong message"
+  | _ -> error "srv_send_m3: wrong message\n"
 #pop-options
 
 let responder_send_msg_4 b msg3_idx b_si =
@@ -250,11 +250,11 @@ let responder_send_msg_4 b msg3_idx b_si =
     let (|_,srv',ser_msg3|) = receive_i #oyrs_preds msg3_idx b in
 
     // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
-    if srv <> srv' then error "r_send_m4: stored server does not match with actual server that sent the third message"
+    if srv <> srv' then error "r_send_m4: stored server does not match with actual server that sent the third message\n"
     else
       match parse_msg ser_msg3 with
       | Success (Msg3 c' (|tag_ev_a,c_ev_a|) (|tag_ev_b,c_ev_b|)) -> (
-        if c <> c' then error "r_send_m4: conversation id in message does not match with the stored id"
+        if c <> c' then error "r_send_m4: conversation id in message does not match with the stored id\n"
         else
           // decrypt part of message intended for responder
           let now = global_timestamp () in
@@ -266,7 +266,7 @@ let responder_send_msg_4 b msg3_idx b_si =
             | Success (EncMsg3_R n_b' k_ab) -> (
               parsed_encval_is_valid_lemma tagged_ser_ev_b;
 
-              if n_b <> n_b' then error "r_send_m4: responder nonce in message does not match with the stored nonce"
+              if n_b <> n_b' then error "r_send_m4: responder nonce in message does not match with the stored nonce\n"
               else
                 // create and send fourth message
                 let msg4:message now = Msg4 c (|tag_ev_a,c_ev_a|) in
@@ -297,13 +297,13 @@ let responder_send_msg_4 b msg3_idx b_si =
 
                 send_m4_idx
             )
-            | _ -> error "r_send_m4: wrong encval"
+            | _ -> error "r_send_m4: wrong encval\n"
           )
           | Error e -> error ("r_send_m4: decryption of part intended for responder failed: " ^ e)
       )
-      | _ -> error "r_send_m4: wrong message"
+      | _ -> error "r_send_m4: wrong message\n"
   )
-  | _ -> error "r_send_m4: wrong session"
+  | _ -> error "r_send_m4: wrong session\n"
 
 let initiator_recv_msg_4 a msg4_idx a_si =
   // get initiator session
@@ -316,11 +316,11 @@ let initiator_recv_msg_4 a msg4_idx a_si =
     let (|_,b',ser_msg4|) = receive_i #oyrs_preds msg4_idx a in
 
     // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
-    if b <> b' then error "i_recv_m4: stored responder does not match with actual responder that sent the fourth message"
+    if b <> b' then error "i_recv_m4: stored responder does not match with actual responder that sent the fourth message\n"
     else
       match parse_msg ser_msg4 with
       | Success (Msg4 c' (|tag_ev_a,c_ev_a|)) -> (
-        if c <> c' then error "i_recv_m4: conversation id in message does not match with the stored id"
+        if c <> c' then error "i_recv_m4: conversation id in message does not match with the stored id\n"
         else
           // decrypt part of message intended for initiator
           let now = global_timestamp () in
@@ -332,7 +332,7 @@ let initiator_recv_msg_4 a msg4_idx a_si =
             | Success (EncMsg3_I n_a' k_ab) -> (
               parsed_encval_is_valid_lemma tagged_ser_ev_a;
 
-              if n_a <> n_a' then error "i_recv_m4: initiator nonce in message does not match with the stored nonce"
+              if n_a <> n_a' then error "i_recv_m4: initiator nonce in message does not match with the stored nonce\n"
               else
                 // update initiator session
                 let st_i_rcvd_m4 = InitiatorRecvedMsg4 srv b k_ab in
@@ -348,10 +348,10 @@ let initiator_recv_msg_4 a msg4_idx a_si =
 
                 ()
             )
-            | _ -> error "i_recv_m4: wrong encval"
+            | _ -> error "i_recv_m4: wrong encval\n"
           )
           | Error e -> error ("i_recv_m4: decryption of part intended for initiator failed: " ^ e)
       )
-      | _ -> error "i_recv_m4: wrong message"
+      | _ -> error "i_recv_m4: wrong message\n"
   )
-  | _ -> error "i_recv_m4: wrong session"
+  | _ -> error "i_recv_m4: wrong session\n"
