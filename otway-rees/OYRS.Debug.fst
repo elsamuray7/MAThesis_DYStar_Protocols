@@ -58,8 +58,9 @@ let intercept_msg_1_attacker () =
   let (msg4_idx, conv_key) = attacker_intercept_msg_1 b a msg1_idx in
   initiator_recv_msg_4 a msg4_idx a_si;
 
-  // TODO: no mutual authentication either -> proof needed
-  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
+  // responder was not involved in protocol run
+  initiator_believes_responder_authenticated a a_si b
 
 val intercept_msg_2_attacker:
   unit ->
@@ -119,8 +120,9 @@ let impersonate_resp_to_init_attacker () =
   let (msg4_idx, conv_key) = attacker_send_msg_4 e b a msg3_idx k_es in
   initiator_recv_msg_4 a msg4_idx a_si;
 
-  // TODO: no mutual authentication either -> proof needed
-  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
+  // responder "bob" was not involved in protocol run
+  initiator_believes_responder_authenticated a a_si b
 
 let benign () : LCrypto unit (pki oyrs_preds)
   (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))

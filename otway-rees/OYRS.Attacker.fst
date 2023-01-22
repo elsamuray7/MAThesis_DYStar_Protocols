@@ -284,4 +284,23 @@ let attacker_knows_conv_key_stored_in_initiator_or_responder_state
     if k_ab = conv_key then () else error "attacker could not derive conversation key\n"
   | Success (S.InitiatorRecvedMsg4 srv b k_ab) ->
     if k_ab = conv_key then () else error "attacker could not derive conversation key\n"
-  | _ -> ()
+  | _ -> error "not a final principal state\n"
+
+val initiator_believes_responder_authenticated:
+  i:principal ->
+  si:nat ->
+  r:principal ->
+  LCrypto unit (L.pki S.oyrs_preds)
+  (requires (fun t0 -> True))
+  (ensures (fun t0 _ t1 -> True))
+
+let initiator_believes_responder_authenticated
+  i
+  si
+  r
+= let now = global_timestamp () in
+  let (|_,ser_st|) = L.get_session #(S.oyrs_preds) #now i si in
+  match S.parse_session_st ser_st with
+  | Success (S.InitiatorRecvedMsg4 srv b k_ab) ->
+    if b = r then () else error "initiator does not believe to talk to responder\n"
+  | _ -> error "wrong state\n"
