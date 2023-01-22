@@ -117,6 +117,7 @@ let impersonate_resp_to_init_attacker () =
   let (msg2_idx, _) = attacker_send_mal_msg_2 e srv msg1_idx k_es in
   let (srv_si, msg3_idx) = server_send_msg_3 srv msg2_idx in
   let (msg4_idx, conv_key) = attacker_send_msg_4 e b a msg3_idx k_es in
+  initiator_recv_msg_4 a msg4_idx a_si;
 
   // TODO: no mutual authentication either -> proof needed
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key
