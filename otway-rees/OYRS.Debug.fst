@@ -88,6 +88,39 @@ let intercept_msg_2_attacker () =
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
   attacker_knows_conv_key_stored_in_initiator_or_responder_state b b_si conv_key
 
+val impersonate_resp_to_init_attacker:
+  unit ->
+  LCrypto unit (pki oyrs_preds)
+  (requires fun _ -> True)
+  (ensures fun _ _ _ -> True)
+
+let impersonate_resp_to_init_attacker () =
+  let a:principal = "alice" in
+  let b:principal = "bob" in
+  let srv:principal = "server" in
+  let e:principal = "eve" in
+
+  let ((|t_as,us_as,k_as|), a_si) = initiator_init a srv b in
+  let ((|t_bs,us_bs,k_bs|), b_si) = responder_init b srv in
+  let before_idx_state_e = global_timestamp () in
+  let ((|t_es,us_es,k_es|), e_si) = responder_init e srv in
+  install_sk_at_auth_server #t_as #us_as srv a k_as;
+  install_sk_at_auth_server #t_bs #us_bs srv b k_bs;
+  install_sk_at_auth_server #t_es #us_es srv e k_es;
+
+  let idx_comp_e = compromise e e_si 0 in
+
+  let now = global_timestamp () in
+  let k_es = query_secret_key (before_idx_state_e + 1) idx_comp_e now e e_si 0 in
+
+  let msg1_idx = initiator_send_msg_1 a a_si in
+  let (msg2_idx, _) = attacker_send_mal_msg_2 e srv msg1_idx k_es in
+  let (srv_si, msg3_idx) = server_send_msg_3 srv msg2_idx in
+  let (msg4_idx, conv_key) = attacker_send_msg_4 e b a msg3_idx k_es in
+
+  // TODO: no mutual authentication either -> proof needed
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key
+
 let benign () : LCrypto unit (pki oyrs_preds)
   (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))
 = print_string "start\n";
@@ -107,6 +140,13 @@ let intercept_msg_2 () : LCrypto unit (pki oyrs_preds)
 = print_string "start\n";
   let t0 = get() in
   let x = intercept_msg_2_attacker () in
+  print_trace ()
+
+let impersonate_resp_to_init () : LCrypto unit (pki oyrs_preds)
+  (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))
+= print_string "start\n";
+  let t0 = get() in
+  let x = impersonate_resp_to_init_attacker () in
   print_trace ()
 
 let main =
@@ -134,4 +174,11 @@ let main =
   (match r with
   | Error s -> IO.print_string ("ERROR: "^s^"\n")
   | Success _ -> IO.print_string "PROTOCOL RUN: Successful execution of Otway-Rees protocol.\n");
-  IO.print_string "Finished Intercept Msg2 Attacker:\n"
+  IO.print_string "Finished Intercept Msg2 Attacker:\n";
+  IO.print_string "Starting Impersonate Responder to Initiator Attacker:\n";
+  assume(valid_trace (pki oyrs_preds) t0);
+  let r,t1 = (reify (impersonate_resp_to_init ()) t0) in
+  (match r with
+  | Error s -> IO.print_string ("ERROR: "^s^"\n")
+  | Success _ -> IO.print_string "PROTOCOL RUN: Successful execution of Otway-Rees protocol.\n");
+  IO.print_string "Finished Impersonate Responder to Initiator Attacker:\n"
