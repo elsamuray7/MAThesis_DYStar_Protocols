@@ -83,6 +83,18 @@ val parsed_encval_is_valid_lemma: #i:nat -> #l:label -> sev:(ser_encval i l) ->
         [SMTPat (parse_encval sev)]
 
 
+let event_initiate (c:bytes) (a b:principal) (n_a:bytes) : event =
+  ("initiate",[c;(string_to_bytes a);(string_to_bytes b);n_a])
+let event_request_key (c:bytes) (a b:principal) (n_b:bytes) : event =
+  ("req_key",[c;(string_to_bytes a);(string_to_bytes b);n_b])
+let event_send_key (c:bytes) (a b:principal) (n_a n_b k_ab:bytes) : event =
+  ("send_key",[c;(string_to_bytes a);(string_to_bytes b);n_a;n_b;k_ab])
+let event_forward_key (c:bytes) (a b:principal) (k_ab:bytes) : event =
+  ("fwd_key",[c;(string_to_bytes a);(string_to_bytes b);k_ab])
+let event_recv_key (c:bytes) (a b:principal) (k_ab:bytes) : event =
+  ("recv_key",[c;(string_to_bytes a);(string_to_bytes b);k_ab])
+
+
 noeq type message (i:nat) =
   | Msg1: c:bytes -> a:string -> b:string -> ev_a:enc_encval i -> message i
   | Msg2: c:bytes -> a:string -> b:string -> ev_a:enc_encval i -> ev_b:enc_encval i -> message i

@@ -43,6 +43,10 @@ let initiator_send_msg_1 a a_si =
     let (|_,c|) = rand_gen #oyrs_preds public (nonce_usage "conv_id") in
     let (|_,n_a|) = rand_gen #oyrs_preds (readers [P a; P srv]) (nonce_usage "nonce_i") in
 
+    // trigger event 'initiate'
+    let event = event_initiate c a b n_a in
+    trigger_event #oyrs_preds a event;
+
     // create and send first message
     let ev1 = EncMsg1 n_a c a b in
     let now = global_timestamp () in
@@ -82,6 +86,10 @@ let responder_send_msg_2 b msg1_idx b_si =
       else
         // generate responder nonce
         let (|_,n_b|) = rand_gen #oyrs_preds (readers [P b; P srv]) (nonce_usage "nonce_r") in
+
+        // trigger event 'request key'
+        let event = event_request_key c a b n_b in
+        trigger_event #oyrs_preds b event;
 
         // create and send second message
         let ev2 = EncMsg2 n_b c a b in
@@ -161,6 +169,10 @@ let server_send_msg_3 srv msg2_idx =
                 // generate shared conversation key between initiator and responder
                 let prev = now in
                 let (|now,k_ab|) = rand_gen #oyrs_preds (readers [P srv; P a; P b]) (aead_usage "sk_i_r") in
+
+                // trigger event 'send key'
+                let event = event_send_key c a b n_a n_b k_ab in
+                trigger_event #oyrs_preds srv event;
 
                 // create and send third message
                 let ev3_i = EncMsg3_I n_a k_ab in
@@ -268,12 +280,15 @@ let responder_send_msg_4 b msg3_idx b_si =
 
               if n_b <> n_b' then error "r_send_m4: responder nonce in message does not match with the stored nonce\n"
               else
+                // trigger event 'forward key'
+                let prev = now in
+                let event = event_forward_key c a b k_ab in
+                trigger_event #oyrs_preds b event;
+
                 // create and send fourth message
                 let msg4:message now = Msg4 c (|tag_ev_a,c_ev_a|) in
-                let now = global_timestamp () in
                 let ser_msg4 = serialize_msg now msg4 in
 
-                let prev = now in
                 let send_m4_idx = send #oyrs_preds #now b a ser_msg4 in
 
                 // update responder session
@@ -334,12 +349,24 @@ let initiator_recv_msg_4 a msg4_idx a_si =
 
               if n_a <> n_a' then error "i_recv_m4: initiator nonce in message does not match with the stored nonce\n"
               else
+                // trigger event 'recv key'
+                let prev = now in
+                let event = event_recv_key c a b k_ab in
+                trigger_event #oyrs_preds a event;
+
                 // update initiator session
                 let st_i_rcvd_m4 = InitiatorRecvedMsg4 srv b k_ab in
                 let now = global_timestamp () in
-                assert(is_msg oyrs_global_usage now k_ab (get_label oyrs_key_usages k_as));
-                assert(is_labeled oyrs_global_usage now k_as (readers [P a; P srv]));
-                assert(is_msg oyrs_global_usage now k_ab (readers [P a; P srv]));
+                assert(is_msg oyrs_global_usage prev k_ab (get_label oyrs_key_usages k_as));
+                assert(is_labeled oyrs_global_usage prev k_as (readers [P a; P srv]));
+                assert(is_msg oyrs_global_usage prev k_ab (readers [P a; P srv]));
+                assert(is_msg oyrs_global_usage prev k_ab (readers [P a; P srv])
+                  ==> can_flow prev (get_label oyrs_key_usages k_ab) (readers [P a; P srv]) /\ is_valid oyrs_global_usage prev k_ab);
+                can_flow_later prev now (get_label oyrs_key_usages k_ab) (readers [P a; P srv]);
+                is_valid_later oyrs_global_usage prev now k_ab;
+                assert(can_flow prev (get_label oyrs_key_usages k_ab) (readers [P a; P srv]) /\ is_valid oyrs_global_usage prev k_ab);
+                assert(can_flow prev (get_label oyrs_key_usages k_ab) (readers [P a; P srv]) /\ is_valid oyrs_global_usage prev k_ab
+                  ==> is_msg oyrs_global_usage now k_ab (readers [P a; P srv]));
                 includes_can_flow_lemma now [P a; P srv] [P a];
                 can_flow_transitive now (get_label oyrs_key_usages k_ab) (readers [P a; P srv]) (readers [P a]);
                 assert(is_msg oyrs_global_usage now k_ab (readers [P a]));

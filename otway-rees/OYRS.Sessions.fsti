@@ -109,7 +109,7 @@ let oyrs_session_st_inv_later (i:timestamp) (j:timestamp) (p:principal) (si:nat)
 let oyrs_preds: LR.preds = {
   LR.global_usage = MSG.oyrs_global_usage;
   LR.trace_preds = {
-    LR.can_trigger_event = (fun idx s e -> False);
+    LR.can_trigger_event = (fun idx s e -> True);
     LR.session_st_inv = oyrs_session_st_inv;
     LR.session_st_inv_later = oyrs_session_st_inv_later;
     LR.session_st_inv_lemma = (fun i p si vi st -> ())
