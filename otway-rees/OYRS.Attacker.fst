@@ -286,7 +286,7 @@ let attacker_knows_conv_key_stored_in_initiator_or_responder_state
     if k_ab = conv_key then () else error "attacker could not derive conversation key\n"
   | _ -> error "not a final principal state\n"
 
-val initiator_believes_responder_authenticated:
+val initiator_believes_talking_to_responder:
   i:principal ->
   si:nat ->
   r:principal ->
@@ -294,7 +294,7 @@ val initiator_believes_responder_authenticated:
   (requires (fun t0 -> True))
   (ensures (fun t0 _ t1 -> True))
 
-let initiator_believes_responder_authenticated
+let initiator_believes_talking_to_responder
   i
   si
   r
@@ -305,9 +305,9 @@ let initiator_believes_responder_authenticated
     if b = r then () else error "initiator does not believe to talk to responder\n"
   | _ -> error "wrong state\n"
 
-/// This function can be used to check for mutual authentication between
-/// initiator and responder at runtime
-val initiator_and_responder_mutually_authenticated:
+/// This function can be used to check whether initiator and responder talk to
+/// each other at runtime
+val initiator_and_responder_talk_to_each_other:
   initiator:principal ->
   responder:principal ->
   i_sess_idx:nat ->
@@ -316,7 +316,7 @@ val initiator_and_responder_mutually_authenticated:
   (requires (fun t0 -> True))
   (ensures (fun t0 _ t1 -> True))
 
-let initiator_and_responder_mutually_authenticated
+let initiator_and_responder_talk_to_each_other
   initiator
   responder
   i_sess_idx
@@ -329,7 +329,10 @@ let initiator_and_responder_mutually_authenticated
   | Success (S.InitiatorRecvedMsg4 srv b k_ab) -> (
     match OYRS.Sessions.parse_session_st r_sess with
     | Success (S.ResponderSentMsg4 srv' a k_ab') -> (
-      if a = initiator && b = responder && k_ab = k_ab' then () else error "mutual authentication not achieved\n"
+      if a <> initiator then error "responder does not believe to talk to initiator\n"
+      else if b <> responder then error "initiator does not believe to talk to responder\n"
+      else if k_ab <> k_ab' then error "initiator and responder have different keys\n"
+      else ()
     )
     | _ -> error "wrong initiator final session\n"
   )

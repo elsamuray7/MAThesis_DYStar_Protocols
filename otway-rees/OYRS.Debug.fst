@@ -60,7 +60,7 @@ let intercept_msg_1_attacker () =
 
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
   // responder was not involved in protocol run
-  initiator_believes_responder_authenticated a a_si b
+  initiator_believes_talking_to_responder a a_si b
 
 val intercept_msg_2_attacker:
   unit ->
@@ -87,7 +87,7 @@ let intercept_msg_2_attacker () =
 
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
   attacker_knows_conv_key_stored_in_initiator_or_responder_state b b_si conv_key;
-  initiator_and_responder_mutually_authenticated a b a_si b_si
+  initiator_and_responder_talk_to_each_other a b a_si b_si
 
 val impersonate_resp_to_init_attacker:
   unit ->
@@ -122,7 +122,7 @@ let impersonate_resp_to_init_attacker () =
 
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
   // responder "bob" was not involved in protocol run
-  initiator_believes_responder_authenticated a a_si b
+  initiator_believes_talking_to_responder a a_si b
 
 let benign () : LCrypto unit (pki oyrs_preds)
   (requires (fun _ -> True)) (ensures (fun _ _ _ -> True))
