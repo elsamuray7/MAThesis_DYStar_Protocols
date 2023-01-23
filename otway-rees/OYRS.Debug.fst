@@ -85,9 +85,9 @@ let intercept_msg_2_attacker () =
   let msg4_idx = responder_send_msg_4 b msg3_idx b_si in
   initiator_recv_msg_4 a msg4_idx a_si;
 
-  // TODO: at least we should get mutual authentication here -> proof needed
   attacker_knows_conv_key_stored_in_initiator_or_responder_state a a_si conv_key;
-  attacker_knows_conv_key_stored_in_initiator_or_responder_state b b_si conv_key
+  attacker_knows_conv_key_stored_in_initiator_or_responder_state b b_si conv_key;
+  initiator_and_responder_mutually_authenticated a b a_si b_si
 
 val impersonate_resp_to_init_attacker:
   unit ->

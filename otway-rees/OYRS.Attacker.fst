@@ -304,3 +304,33 @@ let initiator_believes_responder_authenticated
   | Success (S.InitiatorRecvedMsg4 srv b k_ab) ->
     if b = r then () else error "initiator does not believe to talk to responder\n"
   | _ -> error "wrong state\n"
+
+/// This function can be used to check for mutual authentication between
+/// initiator and responder at runtime
+val initiator_and_responder_mutually_authenticated:
+  initiator:principal ->
+  responder:principal ->
+  i_sess_idx:nat ->
+  r_sess_idx:nat ->
+  LCrypto unit (L.pki S.oyrs_preds)
+  (requires (fun t0 -> True))
+  (ensures (fun t0 _ t1 -> True))
+
+let initiator_and_responder_mutually_authenticated
+  initiator
+  responder
+  i_sess_idx
+  r_sess_idx
+=
+  let now = global_timestamp () in
+  let (|i_vers_idx,i_sess|) = L.get_session #(S.oyrs_preds) #now initiator i_sess_idx in
+  let (|r_vers_idx,r_sess|) = L.get_session #(S.oyrs_preds) #now responder r_sess_idx in
+  match OYRS.Sessions.parse_session_st i_sess with
+  | Success (S.InitiatorRecvedMsg4 srv b k_ab) -> (
+    match OYRS.Sessions.parse_session_st r_sess with
+    | Success (S.ResponderSentMsg4 srv' a k_ab') -> (
+      if a = initiator && b = responder && k_ab = k_ab' then () else error "mutual authentication not achieved\n"
+    )
+    | _ -> error "wrong initiator final session\n"
+  )
+  | _ -> error "wrong responder final session\n"
