@@ -334,6 +334,6 @@ let initiator_and_responder_talk_to_each_other
       else if k_ab <> k_ab' then error "initiator and responder have different keys\n"
       else ()
     )
-    | _ -> error "wrong initiator final session\n"
+    | _ -> error "wrong responder final session\n"
   )
-  | _ -> error "wrong responder final session\n"
+  | _ -> error "wrong initiator final session\n"
