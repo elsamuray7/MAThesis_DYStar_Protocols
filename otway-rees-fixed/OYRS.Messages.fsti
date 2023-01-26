@@ -8,16 +8,94 @@ open CryptoLib
 module LC = LabeledCryptoAPI
 
 
+let _ser_encval = (tag:string & bytes)
+
+/// Format of encrypted message parts
+noeq type encval =
+  | EncMsg1: c:bytes -> a:string -> b:string -> n_a:bytes -> encval
+  | EncMsg2: c:bytes -> a:string -> b:string -> n_b:bytes -> encval
+  | EncMsg3_I: n_a:bytes -> b:principal -> k_ab:bytes -> encval
+  | EncMsg3_R: n_b:bytes -> a:principal -> k_ab:bytes -> encval
+
+let _parse_encval (_sev:_ser_encval) : (r:result encval) =
+  match _sev with
+  | (|"ev1",sev|) -> (
+    split sev `bind` (fun r2 ->
+    let (c, rest) = r2 in
+    split rest `bind` (fun r3 ->
+    let (a_bytes, rest) = r3 in
+    split rest `bind` (fun r4 ->
+    let (b_bytes, n_a) = r4 in
+    bytes_to_string a_bytes `bind` (fun a ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    Success (EncMsg1 c a b n_a)
+    )))))
+  )
+  | (|"ev2",sev|) -> (
+    split sev `bind` (fun r2 ->
+    let (c, rest) = r2 in
+    split rest `bind` (fun r3 ->
+    let (a_bytes, rest) = r3 in
+    split rest `bind` (fun r4 ->
+    let (b_bytes, n_b) = r4 in
+    bytes_to_string a_bytes `bind` (fun a ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    Success (EncMsg2 c a b n_b)
+    )))))
+  )
+  | (|"ev3_i",sev|) -> (
+    split sev `bind` (fun r2 ->
+    let (n_a, rest) = r2 in
+    split rest `bind` (fun (b_bytes, k_ab) ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    Success (EncMsg3_I n_a b k_ab)
+    )))
+  )
+  | (|"ev3_r",sev|) -> (
+    split sev `bind` (fun r2 ->
+    let (n_b, rest) = r2 in
+    split rest `bind` (fun (a_bytes, k_ab) ->
+    bytes_to_string a_bytes `bind` (fun a ->
+    Success (EncMsg3_R n_b a k_ab)
+    )))
+  )
+  | (|t,_|) -> Error ("invalid tag: " ^ t)
+
+
+let event_initiate (c:bytes) (a b srv:principal) (n_a:bytes) : event =
+  ("initiate",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_a])
+let event_request_key (c:bytes) (a b srv:principal) (n_b:bytes) : event =
+  ("req_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_b])
+let event_send_key (c:bytes) (a b srv:principal) (n_a n_b k_ab:bytes) : event =
+  ("send_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_a;n_b;k_ab])
+let event_forward_key (c:bytes) (a b srv:principal) (k_ab:bytes) : event =
+  ("fwd_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);k_ab])
+let event_recv_key (c:bytes) (a b srv:principal) (k_ab:bytes) : event =
+  ("recv_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);k_ab])
+
+
 let oyrs_key_usages : LC.key_usages = LC.default_key_usages
 
 let can_pke_encrypt (i:nat) s pk m = True
-let can_aead_encrypt i s k m ad = True
+let can_aead_encrypt i s k ev ad =
+  exists p srv. LC.get_label oyrs_key_usages k == readers [P p; P srv] /\
+  (match _parse_encval ev with
+  | Success (EncMsg1 _ _ _ _) | Success (EncMsg2 _ _ _ _) -> True
+  | Success (EncMsg3_I n_a b k_ab) ->
+    was_rand_generated_before i k_ab (readers [P srv; P p; P b]) (aead_usage "sk_i_r") /\
+    (exists c n_b. did_event_occur_before i srv (event_send_key c p b srv n_a n_b k_ab))
+  | Success (EncMsg3_R n_b a k_ab) ->
+    was_rand_generated_before i k_ab (readers [P srv; P a; P p]) (aead_usage "sk_i_r") /\
+    (exists c n_a. did_event_occur_before i srv (event_send_key c a p srv n_a n_b k_ab))
+  | _ -> False)
+let oyrs_aead_pred i s k b ad =
+  forall (t:string{bytes_to_string ad = Success t}). can_aead_encrypt i s k (|t,b|) ad
 let can_sign i s k m = True
 let can_mac i s k m = True
 
 let oyrs_usage_preds : LC.usage_preds = {
   LC.can_pke_encrypt = can_pke_encrypt;
-  LC.can_aead_encrypt =  can_aead_encrypt;
+  LC.can_aead_encrypt = oyrs_aead_pred;
   LC.can_sign = can_sign;
   LC.can_mac = can_mac
 }
@@ -31,22 +109,16 @@ let msg i l = LC.msg oyrs_global_usage i l
 let is_msg i b l = LC.is_msg oyrs_global_usage i b l
 
 
-/// Format of encrypted message parts
-noeq type encval =
-  | EncMsg1: c:bytes -> a:string -> b:string -> n_a:bytes -> encval
-  | EncMsg2: c:bytes -> a:string -> b:string -> n_b:bytes -> encval
-  | EncMsg3_I: n_a:bytes -> k_ab:bytes -> encval
-  | EncMsg3_R: n_b:bytes -> k_ab:bytes -> encval
-
 let valid_encval (i:nat) (ev:encval) (l:label) =
   match ev with
   | EncMsg1 c a b n_a -> is_msg i n_a l /\ is_msg i c l
   | EncMsg2 c a b n_b -> is_msg i n_b l /\ is_msg i c l
-  | EncMsg3_I n_a k_ab -> is_msg i n_a l /\ is_msg i k_ab l
-  | EncMsg3_R n_b k_ab -> is_msg i n_b l /\ is_msg i k_ab l
+  | EncMsg3_I n_a b k_ab -> is_msg i n_a l /\ is_msg i k_ab l
+  | EncMsg3_R n_b a k_ab -> is_msg i n_b l /\ is_msg i k_ab l
 
 (* Serialized and encrypted encvals with tags *)
-let ser_encval i l = (tag:string & msg i l)
+let is_ser_encval i (_sev:_ser_encval) l = let (|t,b|) = _sev in (is_msg i b l)
+let ser_encval i l = _sev:_ser_encval{is_ser_encval i _sev l}
 let enc_encval i = (tag:string & msg i public)
 
 val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> sev:(ser_encval i l)
@@ -55,8 +127,8 @@ val serialize_encval: i:nat -> ev:encval -> l:label{valid_encval i ev l} -> sev:
     match (tag, ev) with
     | ("ev1", EncMsg1 _ _ _ _)
     | ("ev2", EncMsg2 _ _ _ _)
-    | ("ev3_i", EncMsg3_I _ _)
-    | ("ev3_r", EncMsg3_R _ _) -> True
+    | ("ev3_i", EncMsg3_I _ _ _)
+    | ("ev3_r", EncMsg3_R _ _ _) -> True
     | _ -> False
   }
 val parse_encval: #i:nat -> #l:label -> sev:(ser_encval i l) -> r:(result encval)
@@ -68,7 +140,8 @@ val parse_encval: #i:nat -> #l:label -> sev:(ser_encval i l) -> r:(result encval
 
 val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label ->
   Lemma (requires (valid_encval i ev l))
-        (ensures (parse_encval (serialize_encval i ev l) == Success ev))
+        (ensures (parse_encval (serialize_encval i ev l) == Success ev /\
+                  _parse_encval (serialize_encval i ev l) == Success ev))
         [SMTPat (parse_encval (serialize_encval i ev l))]
 
 val parsed_encval_is_valid_lemma: #i:nat -> #l:label -> sev:(ser_encval i l) ->
@@ -76,23 +149,14 @@ val parsed_encval_is_valid_lemma: #i:nat -> #l:label -> sev:(ser_encval i l) ->
           match parse_encval sev with
           | Success (EncMsg1 c a b n_a) -> valid_encval i (EncMsg1 c a b n_a) l
           | Success (EncMsg2 c a b n_b) -> valid_encval i (EncMsg2 c a b n_b) l
-          | Success (EncMsg3_I n_a k_ab) -> valid_encval i (EncMsg3_I n_a k_ab) l
-          | Success (EncMsg3_R n_b k_ab) -> valid_encval i (EncMsg3_R n_b k_ab) l
+          | Success (EncMsg3_I n_a b k_ab) -> valid_encval i (EncMsg3_I n_a b k_ab) l
+          | Success (EncMsg3_R n_b a k_ab) -> valid_encval i (EncMsg3_R n_b a k_ab) l
           | _ -> True
         )
         [SMTPat (parse_encval sev)]
 
-
-let event_initiate (c:bytes) (a b:principal) (n_a:bytes) : event =
-  ("initiate",[c;(string_to_bytes a);(string_to_bytes b);n_a])
-let event_request_key (c:bytes) (a b:principal) (n_b:bytes) : event =
-  ("req_key",[c;(string_to_bytes a);(string_to_bytes b);n_b])
-let event_send_key (c:bytes) (a b:principal) (n_a n_b k_ab:bytes) : event =
-  ("send_key",[c;(string_to_bytes a);(string_to_bytes b);n_a;n_b;k_ab])
-let event_forward_key (c:bytes) (a b:principal) (k_ab:bytes) : event =
-  ("fwd_key",[c;(string_to_bytes a);(string_to_bytes b);k_ab])
-let event_recv_key (c:bytes) (a b:principal) (k_ab:bytes) : event =
-  ("recv_key",[c;(string_to_bytes a);(string_to_bytes b);k_ab])
+val can_aead_encrypt_encval_lemma: i:timestamp -> t:string -> l:label -> s:string -> k:bytes -> b:bytes{is_ser_encval i (|t,b|) l} -> ad:bytes{bytes_to_string ad = Success t} ->
+  Lemma (exists j. forall (t':string{bytes_to_string ad = Success t'}). (later_than i j /\ can_aead_encrypt j s k (|t',b|) ad) ==> can_aead_encrypt j s k (|t,b|) ad)
 
 
 noeq type message (i:nat) =

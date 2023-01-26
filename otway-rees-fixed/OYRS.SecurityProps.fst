@@ -31,6 +31,58 @@ let principals_and_conv_key_stored_in_auth_server_state
     | _ -> False
   )
 
+let responder_and_server_and_conv_key_stored_in_initiator_state
+  initiator
+  set_state_idx
+  vv
+  init_state
+  state_session_idx
+  responder
+  server
+  conv_key
+=
+  state_was_set_at set_state_idx initiator vv init_state /\
+  state_session_idx < Seq.Base.length init_state /\
+  (
+    let state_session = Seq.index init_state state_session_idx in
+    match LabeledPKI.parse_session_st state_session with
+    | Success (APP ser_st) -> (
+      match OYRS.Sessions.parse_session_st ser_st with
+     | Success (InitiatorRecvedMsg4 srv b k_ab) -> (
+       b = responder /\
+       k_ab = conv_key
+     )
+     | _ -> False
+    )
+    | _ -> False
+  )
+
+let initiator_and_server_and_conv_key_stored_in_responder_state
+  responder
+  set_state_idx
+  vv
+  resp_state
+  state_session_idx
+  initiator
+  server
+  conv_key
+=
+  state_was_set_at set_state_idx responder vv resp_state /\
+  state_session_idx < Seq.Base.length resp_state /\
+  (
+    let state_session = Seq.index resp_state state_session_idx in
+    match LabeledPKI.parse_session_st state_session with
+    | Success (APP ser_st) -> (
+      match OYRS.Sessions.parse_session_st ser_st with
+     | Success (ResponderSentMsg4 srv a k_ab) -> (
+       a = initiator /\
+       k_ab = conv_key
+     )
+     | _ -> False
+    )
+    | _ -> False
+  )
+
 let conv_key_stored_in_auth_server_state_is_secret
   server
   set_state_idx
@@ -52,4 +104,26 @@ let conv_key_stored_in_auth_server_state_is_secret
     | _ -> ()
   )
   | _ -> ()
+
+let conv_key_stored_in_initiator_state_is_secret
+  initiator
+  set_state_idx
+  vv
+  init_state
+  state_session_idx
+  responder
+  server
+  conv_key
+= secrecy_lemma #(pki oyrs_preds) conv_key
+
+let conv_key_stored_in_responder_state_is_secret
+  responder
+  set_state_idx
+  vv
+  resp_state
+  state_session_idx
+  initiator
+  server
+  conv_key
+= secrecy_lemma #(pki oyrs_preds) conv_key
 
