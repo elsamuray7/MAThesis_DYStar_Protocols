@@ -138,6 +138,9 @@ val parse_encval: #i:nat -> #l:label -> sev:(ser_encval i l) -> r:(result encval
     | Error _ -> True
   }
 
+val parse_encval_lemma: #i:nat -> #l:label -> sev:(ser_encval i l) ->
+  Lemma (parse_encval sev == _parse_encval sev)
+
 val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label ->
   Lemma (requires (valid_encval i ev l))
         (ensures (parse_encval (serialize_encval i ev l) == Success ev /\

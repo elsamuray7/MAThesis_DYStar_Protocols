@@ -65,6 +65,8 @@ let parse_encval #i #l (sev:ser_encval i l) =
   )
   | (|t,_|) -> Error ("invalid tag: " ^ t)
 
+let parse_encval_lemma #i #l sev = ()
+
 let parse_serialize_encval_lemma i ev l = ()
 
 let parsed_encval_is_valid_lemma #i #l sev = ()
