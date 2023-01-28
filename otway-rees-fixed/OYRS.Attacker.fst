@@ -197,7 +197,7 @@ let attacker_send_mal_msg_2 (#i:nat) (eve srv:principal) (msg1_idx:nat)
     let ev2 = A.concat c (A.concat a_bytes (A.concat b_bytes n_e)) in
     let k_es = A.pub_bytes_later i now k_es in
     let iv = A.pub_bytes_later 0 now (A.string_to_pub_bytes "iv") in
-    let ad = A.pub_bytes_later 0 now (A.string_to_pub_bytes "ev_r") in
+    let ad = A.pub_bytes_later 0 now (A.string_to_pub_bytes "ev2") in
     let c_ev2 = A.aead_enc #now k_es iv ev2 ad in
 
     let msg2_tag = A.pub_bytes_later 0 now (A.string_to_pub_bytes "msg2") in
@@ -241,10 +241,11 @@ let attacker_send_msg_4 (#i:nat) (eve bob alice:principal) (msg3_idx:nat)
     let c_ev_e = A.pub_bytes_later t_m3 now c_ev_e in
     let k_es = A.pub_bytes_later i now k_es in
     let iv = A.pub_bytes_later 0 now (A.string_to_pub_bytes "iv") in
-    let ad = A.pub_bytes_later 0 now (A.string_to_pub_bytes "ev_r") in
+    let ad = A.pub_bytes_later 0 now (A.string_to_pub_bytes "ev3_r") in
     match
       A.aead_dec #now k_es iv c_ev_e ad `bind` (fun ev_e ->
-      A.split ev_e `bind` (fun (_, k_ab) -> Success k_ab))
+      A.split ev_e `bind` (fun (_, rest) ->
+      A.split rest `bind` (fun (_, k_ab) -> Success k_ab)))
     with
     | Success k_ab -> (
       //create and send fourth message
