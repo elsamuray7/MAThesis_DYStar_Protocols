@@ -10,6 +10,7 @@ open OYRS.Sessions
 open LabeledCryptoAPI
 open LabeledRuntimeAPI
 open LabeledPKI
+open SecurityLemmas
 
 
 val initiator_init:

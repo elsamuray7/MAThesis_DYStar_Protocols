@@ -3,6 +3,7 @@ module OYRS.Sessions
 
 open SecrecyLabels
 open CryptoLib
+open GlobalRuntimeLib
 
 module MSG = OYRS.Messages
 module LC = LabeledCryptoAPI
@@ -56,8 +57,12 @@ let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
     MSG.is_msg i n_a (readers [P p]) /\
     MSG.is_msg i n_b (readers [P p]) /\
     is_labeled i k_ab (readers [P p; P a; P b])
-  | ResponderSentMsg4 srv a k_ab -> MSG.is_msg i k_ab (readers [P p])
-  | InitiatorRecvedMsg4 srv b k_ab -> MSG.is_msg i k_ab (readers [P p])
+  | ResponderSentMsg4 srv a k_ab ->
+    MSG.is_msg i k_ab (readers [P p]) /\
+    (LC.corrupt_id i (P p) \/ LC.corrupt_id i (P srv) \/ LC.corrupt_id i (P a) \/ is_labeled i k_ab (readers [P srv; P a; P p]))
+  | InitiatorRecvedMsg4 srv b k_ab ->
+    MSG.is_msg i k_ab (readers [P p]) /\
+    (LC.corrupt_id i (P p) \/ LC.corrupt_id i (P srv) \/ LC.corrupt_id i (P b) \/ is_labeled i k_ab (readers [P srv; P p; P b]))
 
 let valid_session_later (i j:timestamp) (p:principal) (si vi:nat) (st:session_st) :
   Lemma (ensures (valid_session i p si vi st /\ later_than j i ==> valid_session j p si vi st))
@@ -89,6 +94,29 @@ val parse_serialize_session_st_lemma: i:nat -> p:principal -> si:nat -> vi:nat -
 	  [SMTPat (parse_session_st (serialize_session_st i p si vi st))]
 
 
+let epred idx s e =
+  match e with
+  | ("initiate",_) | ("req_key",_) -> True
+  | ("send_key",[c;a_bs;b_bs;s_bs;n_a;n_b;k_ab]) -> (
+    match (bytes_to_string a_bs, bytes_to_string b_bs, bytes_to_string s_bs) with
+    | (Success a, Success b, Success srv) ->
+      srv = s /\ was_rand_generated_before idx k_ab (readers [P srv; P a; P b]) (aead_usage "sk_i_r")
+    | _ -> False
+  )
+  | ("fwd_key",[c;a_bs;b_bs;s_bs;k_ab]) -> (
+    match (bytes_to_string a_bs, bytes_to_string b_bs, bytes_to_string s_bs) with
+    | (Success a, Success b, Success srv) ->
+      b = s /\ (exists c n_a n_b. did_event_occur_before idx srv (MSG.event_send_key c a b srv n_a n_b k_ab)) \/ LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)
+    | _ -> False
+  )
+  | ("recv_key",[c;a_bs;b_bs;s_bs;k_ab]) -> (
+    match (bytes_to_string a_bs, bytes_to_string b_bs, bytes_to_string s_bs) with
+    | (Success a, Success b, Success srv) ->
+      a = s /\ (exists c n_a n_b. did_event_occur_before idx srv (MSG.event_send_key c a b srv n_a n_b k_ab)) \/ LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)
+    | _ -> False
+  )
+  | _ -> False
+
 let oyrs_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (version:nat) (state:bytes) =
     MSG.is_msg trace_idx state (readers [V p state_session_idx version]) /\
     (match parse_session_st state with
@@ -109,7 +137,7 @@ let oyrs_session_st_inv_later (i:timestamp) (j:timestamp) (p:principal) (si:nat)
 let oyrs_preds: LR.preds = {
   LR.global_usage = MSG.oyrs_global_usage;
   LR.trace_preds = {
-    LR.can_trigger_event = (fun idx s e -> True);
+    LR.can_trigger_event = epred;
     LR.session_st_inv = oyrs_session_st_inv;
     LR.session_st_inv_later = oyrs_session_st_inv_later;
     LR.session_st_inv_lemma = (fun i p si vi st -> ())

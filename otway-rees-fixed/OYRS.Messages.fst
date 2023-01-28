@@ -14,10 +14,12 @@ let serialize_encval i ev l =
     let a_bytes = LC.string_to_bytes #oyrs_global_usage #i a in
     let b_bytes = LC.string_to_bytes #oyrs_global_usage #i b in
     (|"ev2",(LC.concat #oyrs_global_usage #i #l c (LC.concat #oyrs_global_usage #i #l a_bytes (LC.concat #oyrs_global_usage #i #l b_bytes n_b)))|)
-  | EncMsg3_I n_a k_ab ->
-    (|"ev3_i",(LC.concat #oyrs_global_usage #i #l n_a k_ab)|)
-  | EncMsg3_R n_b k_ab ->
-    (|"ev3_r",(LC.concat #oyrs_global_usage #i #l n_b k_ab)|)
+  | EncMsg3_I n_a b k_ab ->
+    let b_bytes = LC.string_to_bytes #oyrs_global_usage #i b in
+    (|"ev3_i",(LC.concat #oyrs_global_usage #i #l n_a (LC.concat #oyrs_global_usage #i #l b_bytes k_ab))|)
+  | EncMsg3_R n_b a k_ab ->
+    let a_bytes = LC.string_to_bytes #oyrs_global_usage #i a in
+    (|"ev3_r",(LC.concat #oyrs_global_usage #i #l n_b (LC.concat #oyrs_global_usage #i #l a_bytes k_ab))|)
 
 let parse_encval #i #l (sev:ser_encval i l) =
   match sev with
@@ -47,21 +49,32 @@ let parse_encval #i #l (sev:ser_encval i l) =
   )
   | (|"ev3_i",sev|) -> (
     LC.split #oyrs_global_usage #i #l sev `bind` (fun r2 ->
-    let (n_a, k_ab) = r2 in
-    Success (EncMsg3_I n_a k_ab)
-    )
+    let (n_a, rest) = r2 in
+    LC.split #oyrs_global_usage #i #l rest `bind` (fun (b_bytes, k_ab) ->
+    LC.bytes_to_string #oyrs_global_usage #i b_bytes `bind` (fun b ->
+    Success (EncMsg3_I n_a b k_ab)
+    )))
   )
   | (|"ev3_r",sev|) -> (
     LC.split #oyrs_global_usage #i #l sev `bind` (fun r2 ->
-    let (n_b, k_ab) = r2 in
-    Success (EncMsg3_R n_b k_ab)
-    )
+    let (n_b, rest) = r2 in
+    LC.split #oyrs_global_usage #i #l rest `bind` (fun (a_bytes, k_ab) ->
+    LC.bytes_to_string #oyrs_global_usage #i a_bytes `bind` (fun a ->
+    Success (EncMsg3_R n_b a k_ab)
+    )))
   )
   | (|t,_|) -> Error ("invalid tag: " ^ t)
+
+let parse_encval_lemma #i #l sev = ()
 
 let parse_serialize_encval_lemma i ev l = ()
 
 let parsed_encval_is_valid_lemma #i #l sev = ()
+
+let can_aead_encrypt_encval_lemma i t l s k b ad =
+  assert(forall (t':string{bytes_to_string ad = Success t'}). t' = t);
+  assert(forall (t':string{bytes_to_string ad = Success t'}). (|t',b|) = (|t,b|));
+  assert(exists j. forall (t':string{bytes_to_string ad = Success t'}). can_aead_encrypt j s k (|t',b|) ad ==> can_aead_encrypt j s k (|t,b|) ad)
 
 
 let serialize_msg i m =
