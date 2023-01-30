@@ -68,10 +68,10 @@ let event_request_key (c:bytes) (a b srv:principal) (n_b:bytes) : event =
   ("req_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_b])
 let event_send_key (c:bytes) (a b srv:principal) (n_a n_b k_ab:bytes) : event =
   ("send_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_a;n_b;k_ab])
-let event_forward_key (c:bytes) (a b srv:principal) (k_ab:bytes) : event =
-  ("fwd_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);k_ab])
-let event_recv_key (c:bytes) (a b srv:principal) (k_ab:bytes) : event =
-  ("recv_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);k_ab])
+let event_forward_key (c:bytes) (a b srv:principal) (n_b k_ab:bytes) : event =
+  ("fwd_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_b;k_ab])
+let event_recv_key (c:bytes) (a b srv:principal) (n_a k_ab:bytes) : event =
+  ("recv_key",[c;(string_to_bytes a);(string_to_bytes b);(string_to_bytes srv);n_a;k_ab])
 
 
 let oyrs_key_usages : LC.key_usages = LC.default_key_usages

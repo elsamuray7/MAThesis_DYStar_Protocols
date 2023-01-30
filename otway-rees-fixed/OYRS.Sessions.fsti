@@ -107,16 +107,16 @@ let epred idx s e =
       was_rand_generated_before idx k_ab (readers [P srv; P a; P b]) (aead_usage "sk_i_r")
     | _ -> False
   )
-  | ("fwd_key",[c;a_bs;b_bs;s_bs;k_ab]) -> (
+  | ("fwd_key",[c;a_bs;b_bs;s_bs;n_b;k_ab]) -> (
     match (bytes_to_string a_bs, bytes_to_string b_bs, bytes_to_string s_bs) with
     | (Success a, Success b, Success srv) ->
-      b = s /\ (exists c n_a n_b. did_event_occur_before idx srv (MSG.event_send_key c a b srv n_a n_b k_ab)) \/ LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)
+      b = s /\ (exists c n_a. did_event_occur_before idx srv (MSG.event_send_key c a b srv n_a n_b k_ab)) \/ LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)
     | _ -> False
   )
-  | ("recv_key",[c;a_bs;b_bs;s_bs;k_ab]) -> (
+  | ("recv_key",[c;a_bs;b_bs;s_bs;n_a;k_ab]) -> (
     match (bytes_to_string a_bs, bytes_to_string b_bs, bytes_to_string s_bs) with
     | (Success a, Success b, Success srv) ->
-      a = s /\ (exists c n_a n_b. did_event_occur_before idx srv (MSG.event_send_key c a b srv n_a n_b k_ab)) \/ LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)
+      a = s /\ (exists c n_b. did_event_occur_before idx srv (MSG.event_send_key c a b srv n_a n_b k_ab)) \/ LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)
     | _ -> False
   )
   | _ -> False

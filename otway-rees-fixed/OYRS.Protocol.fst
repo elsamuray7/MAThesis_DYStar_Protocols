@@ -504,7 +504,7 @@ let responder_send_msg_4 b msg3_idx b_si =
 
                 // trigger event 'forward key'
                 let prev = now in
-                let event = event_forward_key c a b srv k_ab in
+                let event = event_forward_key c a b srv n_b k_ab in
                 trigger_event #oyrs_preds b event;
 
                 // create and send fourth message
@@ -645,7 +645,7 @@ let initiator_recv_msg_4 a msg4_idx a_si =
 
                 // trigger event 'recv key'
                 let prev = now in
-                let event = event_recv_key c a b srv k_ab in
+                let event = event_recv_key c a b srv n_a k_ab in
                 trigger_event #oyrs_preds a event;
 
                 // update initiator session
