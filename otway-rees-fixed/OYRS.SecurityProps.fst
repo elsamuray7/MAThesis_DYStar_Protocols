@@ -152,3 +152,7 @@ let conv_key_stored_in_responder_state_is_secret
     | _ -> ()
   )
   | _ -> ()
+
+let initiator_authentication i = ()
+
+let responder_authentication i = ()

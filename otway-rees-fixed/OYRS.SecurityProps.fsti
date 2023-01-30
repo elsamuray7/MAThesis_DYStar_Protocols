@@ -144,3 +144,17 @@ val conv_key_stored_in_responder_state_is_secret:
       )
     )
   ))
+
+val initiator_authentication: i:nat ->
+  LCrypto unit (pki oyrs_preds)
+  (requires (fun t0 -> i < trace_len t0))
+  (ensures (fun t0 _ t1 -> forall c a b srv k_ab.
+  did_event_occur_at i b (event_forward_key c a b srv k_ab)
+  ==> ((exists c n_a. did_event_occur_before i a (event_initiate c a b srv n_a)) \/ corrupt_id i (P a) \/ corrupt_id i (P b) \/ corrupt_id i (P srv))))
+
+val responder_authentication: i:nat ->
+  LCrypto unit (pki oyrs_preds)
+  (requires (fun t0 -> i < trace_len t0))
+  (ensures (fun t0 _ t1 -> forall c a b srv k_ab.
+  did_event_occur_at i a (event_recv_key c a b srv k_ab)
+  ==> ((exists c n_b. did_event_occur_before i b (event_request_key c a b srv n_b)) \/ corrupt_id i (P a) \/ corrupt_id i (P b) \/ corrupt_id i (P srv))))

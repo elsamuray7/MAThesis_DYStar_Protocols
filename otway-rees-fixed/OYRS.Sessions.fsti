@@ -100,7 +100,11 @@ let epred idx s e =
   | ("send_key",[c;a_bs;b_bs;s_bs;n_a;n_b;k_ab]) -> (
     match (bytes_to_string a_bs, bytes_to_string b_bs, bytes_to_string s_bs) with
     | (Success a, Success b, Success srv) ->
-      srv = s /\ was_rand_generated_before idx k_ab (readers [P srv; P a; P b]) (aead_usage "sk_i_r")
+      srv = s /\
+      (did_event_occur_before idx a (MSG.event_initiate c a b srv n_a) /\
+      did_event_occur_before idx b (MSG.event_request_key c a b srv n_b) \/
+      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)) /\
+      was_rand_generated_before idx k_ab (readers [P srv; P a; P b]) (aead_usage "sk_i_r")
     | _ -> False
   )
   | ("fwd_key",[c;a_bs;b_bs;s_bs;k_ab]) -> (

@@ -80,7 +80,10 @@ let can_pke_encrypt (i:nat) s pk m = True
 let can_aead_encrypt i s k ev ad =
   exists p srv. LC.get_label oyrs_key_usages k == readers [P p; P srv] /\
   (match _parse_encval ev with
-  | Success (EncMsg1 _ _ _ _) | Success (EncMsg2 _ _ _ _) -> True
+  | Success (EncMsg1 c a b n_a) ->
+    did_event_occur_before i a (event_initiate c a b srv n_a)
+  | Success (EncMsg2 c a b n_b) ->
+    did_event_occur_before i b (event_request_key c a b srv n_b)
   | Success (EncMsg3_I n_a b k_ab) ->
     was_rand_generated_before i k_ab (readers [P srv; P p; P b]) (aead_usage "sk_i_r") /\
     (exists c n_b. did_event_occur_before i srv (event_send_key c p b srv n_a n_b k_ab))

@@ -136,7 +136,9 @@ let find_auth_server_session_helper (svr:principal) (p:principal) :
     | _ -> error "find_auth_server_session_helper: wrong session\n"
   )
   | None -> error ("find_auth_server_session_helper: no session for " ^ p ^ " found")
+#pop-options
 
+#push-options "--z3rlimit 600"
 let server_send_msg_3 srv msg2_idx =
   // receive and parse second message
   let (|now,b,ser_msg2|) = receive_i #oyrs_preds msg2_idx srv in
@@ -151,11 +153,13 @@ let server_send_msg_3 srv msg2_idx =
       let (_,_,_,(AuthServerSession _ k_bs _)) = find_auth_server_session_helper srv b in
 
       // decrypt parts of message encrypted by initiator and responder, respectively
+      let ad_a = (string_to_bytes #oyrs_global_usage #now "ev1") in
       let c_ev_a:msg oyrs_global_usage now public = c_ev_a in
-      match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") c_ev_a (string_to_bytes #oyrs_global_usage #now "ev1") with
+      match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_as) k_as (string_to_bytes #oyrs_global_usage #now "iv") c_ev_a ad_a with
       | Success ser_ev_a -> (
+        let ad_b = (string_to_bytes #oyrs_global_usage #now "ev2") in
         let c_ev_b:msg oyrs_global_usage now public = c_ev_b in
-        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b (string_to_bytes #oyrs_global_usage #now "ev2") with
+        match aead_dec #oyrs_global_usage #now #(get_label oyrs_key_usages k_bs) k_bs (string_to_bytes #oyrs_global_usage #now "iv") c_ev_b ad_b with
         | Success ser_ev_b -> (
           // parse the decrypted message parts
           let tagged_ser_ev_a:ser_encval now (get_label oyrs_key_usages k_as) = (|tag_ev_a,ser_ev_a|) in
@@ -171,13 +175,151 @@ let server_send_msg_3 srv msg2_idx =
               if c_a <> c_b || a_a <> a_b || b_a <> b_b then error "srv_send_m3: encrypted parts of initiator and responder do not match\n"
               // This should fix the attack in which the attacker impersonates the responder by replacing the responders name with his name in the unencrypted part
               else if a_a <> a || a_b <> a || b_a <> b || b_b <> b then error "srv_send_m3: principal names in encrypted parts do not match with principal names in unencrypted part\n"
+              else if c_a <> c || c_b <> c then error "srv_send_m3: conversation id in encrypted parts does not match with conversation id in unencrypted part\n"
               else
                 // generate shared conversation key between initiator and responder
                 let prev = now in
-                let (|_,k_ab|) = rand_gen #oyrs_preds (readers [P srv; P a; P b]) (aead_usage "sk_i_r") in
+                let (|now,k_ab|) = rand_gen #oyrs_preds (readers [P srv; P a; P b]) (aead_usage "sk_i_r") in
+
+                // k_as publishable or aead_pred holds
+                assert(is_publishable oyrs_global_usage now k_as
+                  \/ aead_pred oyrs_usage_preds now "sk_i_srv" k_as ser_ev_a ad_a);
+                // if k_as publishable, k_as readers flow to public
+                assert(is_publishable oyrs_global_usage now k_as
+                  ==> can_flow now (get_label oyrs_key_usages k_as) public);
+                // k_as readable by responder and server
+                assert(is_labeled oyrs_global_usage now k_as (readers [P a; P srv]));
+                // k_as readers flow to public -> k_as readers corrupted
+                publishable_readers_implies_corruption #now [P a; P srv];
+                // k_as readers corrupted or aead_pred holds
+                includes_corrupt_2_lemma now (P a) (P srv);
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ aead_pred oyrs_usage_preds now "sk_i_srv" k_as ser_ev_a ad_a);
+
+                // if aead_pred holds, oyrs_aead_pred holds for some timestamp before now
+                assert(aead_pred oyrs_usage_preds now "sk_i_srv" k_as ser_ev_a ad_a
+                  ==> (exists i. later_than now i /\ oyrs_aead_pred i "sk_i_srv" k_as ser_ev_a ad_a));
+                // k_as readers corrupted or oyrs_aead_pred holds for some timestamp before now
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ oyrs_aead_pred i "sk_i_srv" k_as ser_ev_a ad_a));
+
+                // plug in definition of oyrs_aead_pred
+                assert(exists i. (later_than now i /\ oyrs_aead_pred i "sk_i_srv" k_as ser_ev_a ad_a)
+                  ==> (forall (t:string{CryptoLib.bytes_to_string ad_a = Success t}). can_aead_encrypt i "sk_i_srv" k_as (|t,ser_ev_a|) ad_a));
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. forall (t:string{CryptoLib.bytes_to_string ad_a = Success t}). later_than now i /\ can_aead_encrypt i "sk_i_srv" k_as (|t,ser_ev_a|) ad_a));
+
+                // tag_ev_a is concrete value for t
+                assert(CryptoLib.bytes_to_string ad_a = Success tag_ev_a);
+                // can_aead_encrypt holds for all t -> holds for concrete t
+                can_aead_encrypt_encval_lemma now tag_ev_a (get_label oyrs_key_usages k_as) "sk_i_srv" k_as ser_ev_a ad_a;
+                // if can_aead_encrypt holds for all t, it holds for tag_ev_a
+                assert((exists i. forall (t:string{CryptoLib.bytes_to_string ad_a = Success t}). later_than now i /\ can_aead_encrypt i "sk_i_srv" k_as (|t,ser_ev_a|) ad_a)
+                  ==> (exists i. later_than now i /\ can_aead_encrypt i "sk_i_srv" k_as (|tag_ev_a,ser_ev_a|) ad_a));
+                // k_as readers corrupted or can_aead_encrypt holds for tag_ev_a
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ can_aead_encrypt i "sk_i_srv" k_as (|tag_ev_a,ser_ev_a|) ad_a));
+
+                // prepare F* for rest of proof
+                (*** NOTE: THIS LEMMA IS NOT PART OF THE PUBLIC DY* VERSION ***)
+                readers_is_injective_2 a srv;
+                parse_encval_lemma #now #(get_label oyrs_key_usages k_as) (|tag_ev_a,ser_ev_a|);
+                assert(get_label oyrs_key_usages k_as == (readers [P a; P srv])
+                  /\ _parse_encval (|tag_ev_a,ser_ev_a|) == Success (EncMsg1 c a b n_a));
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ get_label oyrs_key_usages k_as == (readers [P a; P srv]) /\ did_event_occur_before i a (event_initiate c a b srv n_a)));
+
+                // if can_aead_encrypt holds for tag_ev_a, event_initiate occured before some timestamp before now
+                assert((exists i. later_than now i /\ can_aead_encrypt i "sk_i_srv" k_as (|tag_ev_a,ser_ev_a|) ad_a)
+                  ==> (exists i. later_than now i /\ did_event_occur_before i a (event_initiate c a b srv n_a)));
+                // k_as readers corrupted or event_initiate occured before some timestamp before now
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ did_event_occur_before i a (event_initiate c a b srv n_a)));
+
+                // if event_initiate occured before some timestamp before now, it occured before now (AHOI, captain obvious)
+                assert((exists i. later_than now i /\ did_event_occur_before i a (event_initiate c a b srv n_a))
+                  ==> did_event_occur_before now a (event_initiate c a b srv n_a));
+                // k_as readers corrupted or event_initiate occured before now
+                assert((corrupt_id now (P a)) \/ (corrupt_id now (P srv))
+                  \/ did_event_occur_before now a (event_initiate c a b srv n_a));
+
+                // k_bs publishable or aead_pred holds
+                assert(is_publishable oyrs_global_usage now k_bs
+                  \/ aead_pred oyrs_usage_preds now "sk_r_srv" k_bs ser_ev_b ad_b);
+                // if k_bs publishable, k_bs readers flow to public
+                assert(is_publishable oyrs_global_usage now k_bs
+                  ==> can_flow now (get_label oyrs_key_usages k_bs) public);
+                // k_bs readable by responder and server
+                assert(is_labeled oyrs_global_usage now k_bs (readers [P b; P srv]));
+                // k_bs readers flow to public -> k_bs readers corrupted
+                publishable_readers_implies_corruption #now [P b; P srv];
+                // k_bs readers corrupted or aead_pred holds
+                includes_corrupt_2_lemma now (P b) (P srv);
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ aead_pred oyrs_usage_preds now "sk_r_srv" k_bs ser_ev_b ad_b);
+
+                // if aead_pred holds, oyrs_aead_pred holds for some timestamp before now
+                assert(aead_pred oyrs_usage_preds now "sk_r_srv" k_bs ser_ev_b ad_b
+                  ==> (exists i. later_than now i /\ oyrs_aead_pred i "sk_r_srv" k_bs ser_ev_b ad_b));
+                // k_bs readers corrupted or oyrs_aead_pred holds for some timestamp before now
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ oyrs_aead_pred i "sk_r_srv" k_bs ser_ev_b ad_b));
+
+                // plug in definition of oyrs_aead_pred
+                assert(exists i. (later_than now i /\ oyrs_aead_pred i "sk_r_srv" k_bs ser_ev_b ad_b)
+                  ==> (forall (t:string{CryptoLib.bytes_to_string ad_b = Success t}). can_aead_encrypt i "sk_r_srv" k_bs (|t,ser_ev_b|) ad_b));
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. forall (t:string{CryptoLib.bytes_to_string ad_b = Success t}). later_than now i /\ can_aead_encrypt i "sk_r_srv" k_bs (|t,ser_ev_b|) ad_b));
+
+                // tag_ev_b is concrete value for t
+                assert(CryptoLib.bytes_to_string ad_b = Success tag_ev_b);
+                // can_aead_encrypt holds for all t -> holds for concrete t
+                can_aead_encrypt_encval_lemma now tag_ev_b (get_label oyrs_key_usages k_bs) "sk_r_srv" k_bs ser_ev_b ad_b;
+                // if can_aead_encrypt holds for all t, it holds for tag_ev_b
+                assert((exists i. forall (t:string{CryptoLib.bytes_to_string ad_b = Success t}). later_than now i /\ can_aead_encrypt i "sk_r_srv" k_bs (|t,ser_ev_b|) ad_b)
+                  ==> (exists i. later_than now i /\ can_aead_encrypt i "sk_r_srv" k_bs (|tag_ev_b,ser_ev_b|) ad_b));
+                // k_bs readers corrupted or can_aead_encrypt holds for tag_ev_b
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ can_aead_encrypt i "sk_r_srv" k_bs (|tag_ev_b,ser_ev_b|) ad_b));
+
+                // prepare F* for rest of proof
+                (*** NOTE: THIS LEMMA IS NOT PART OF THE PUBLIC DY* VERSION ***)
+                readers_is_injective_2 b srv;
+                parse_encval_lemma #now #(get_label oyrs_key_usages k_bs) (|tag_ev_b,ser_ev_b|);
+                assert(get_label oyrs_key_usages k_bs == (readers [P b; P srv])
+                  /\ _parse_encval (|tag_ev_b,ser_ev_b|) == Success (EncMsg2 c a b n_b));
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ get_label oyrs_key_usages k_bs == (readers [P b; P srv]) /\ did_event_occur_before i b (event_request_key c a b srv n_b)));
+
+                // if can_aead_encrypt holds for tag_ev_b, event_request_key occured before some timestamp before now
+                assert((exists i. later_than now i /\ can_aead_encrypt i "sk_r_srv" k_bs (|tag_ev_b,ser_ev_b|) ad_b)
+                  ==> (exists i. later_than now i /\ did_event_occur_before i b (event_request_key c a b srv n_b)));
+                // k_bs readers corrupted or event_request_key occured before some timestamp before now
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ (exists i. later_than now i /\ did_event_occur_before i b (event_request_key c a b srv n_b)));
+
+                // if event_request_key occured before some timestamp before now, it occured before now (AHOI, captain obvious)
+                assert((exists i. later_than now i /\ did_event_occur_before i b (event_request_key c a b srv n_b))
+                  ==> did_event_occur_before now b (event_request_key c a b srv n_b));
+                // k_bs readers corrupted or event_request_key occured before now
+                assert((corrupt_id now (P b)) \/ (corrupt_id now (P srv))
+                  \/ did_event_occur_before now b (event_request_key c a b srv n_b));
+
+                assert(((corrupt_id now (P a)) \/ (corrupt_id now (P srv)) \/ did_event_occur_before now a (event_initiate c a b srv n_a))
+                  /\ ((corrupt_id now (P b)) \/ (corrupt_id now (P srv)) \/ did_event_occur_before now b (event_request_key c a b srv n_b)));
+                assert((((corrupt_id now (P a)) \/ (corrupt_id now (P srv)) \/ did_event_occur_before now a (event_initiate c a b srv n_a))
+                  /\ ((corrupt_id now (P b)) \/ (corrupt_id now (P srv)) \/ did_event_occur_before now b (event_request_key c a b srv n_b)))
+                  ==> (((corrupt_id now (P a)) \/ (corrupt_id now (P srv)) \/ (corrupt_id now (P b)) \/ did_event_occur_before now a (event_initiate c a b srv n_a))
+                  /\ ((corrupt_id now (P b)) \/ (corrupt_id now (P srv)) \/ (corrupt_id now (P a)) \/ did_event_occur_before now b (event_request_key c a b srv n_b))));
+                assert((((corrupt_id now (P a)) \/ (corrupt_id now (P srv)) \/ (corrupt_id now (P b)) \/ did_event_occur_before now a (event_initiate c a b srv n_a))
+                  /\ ((corrupt_id now (P b)) \/ (corrupt_id now (P srv)) \/ (corrupt_id now (P a)) \/ did_event_occur_before now b (event_request_key c a b srv n_b)))
+                  ==> (corrupt_id now (P a)) \/ (corrupt_id now (P srv)) \/ (corrupt_id now (P b))
+                  \/ (did_event_occur_before now a (event_initiate c a b srv n_a) /\ did_event_occur_before now b (event_request_key c a b srv n_b)));
+                assert(was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "sk_i_r"));
 
                 // trigger event 'send key'
                 let event = event_send_key c a b srv n_a n_b k_ab in
+                assert(epred now srv event);
                 trigger_event #oyrs_preds srv event;
 
                 // create and send third message
@@ -266,9 +408,7 @@ let server_send_msg_3 srv msg2_idx =
       | Error e -> error ("srv_send_m3: decryption of initiator part failed: " ^ e)
   )
   | _ -> error "srv_send_m3: wrong message\n"
-#pop-options
 
-#push-options "--z3rlimit 500"
 let responder_send_msg_4 b msg3_idx b_si =
   // get responder session
   let now = global_timestamp () in
