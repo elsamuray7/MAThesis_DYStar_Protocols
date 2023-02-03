@@ -31,7 +31,7 @@ let msg i l = LC.msg ds_global_usage i l
 let is_msg i b l = LC.is_msg ds_global_usage i b l
 
 
-/// Format of signed message parts
+/// Format of encrypted/signed message parts
 noeq type encsigval =
   | SigCertP: p:principal -> pk_p:bytes -> t:timestamp -> encsigval
   | EncSigCommKey: ck:bytes -> t:timestamp -> encsigval
