@@ -33,10 +33,10 @@ let install_sk_at_auth_server #i #us srv p sk =
   new_session #oyrs_preds #now srv new_sess_idx 0 ser_st
 
 #push-options "--z3rlimit 300"
-let initiator_send_msg_1 a a_si =
+let initiator_send_msg_1 a a_ii =
   // get initiator session
   let now = global_timestamp () in
-  let (|a_vi,ser_st|) = get_session #oyrs_preds #now a a_si in
+  let (|_,ser_st|) = get_session #oyrs_preds #now a a_ii in
 
   match parse_session_st ser_st with
   | Success (InitiatorInit srv k_as b) -> (
@@ -62,19 +62,20 @@ let initiator_send_msg_1 a a_si =
     let send_m1_idx = send #oyrs_preds a b ser_msg1 in
 
     // update initiator session
+    let new_sess_idx = new_session_number #oyrs_preds a in
     let st_i_m1 = InitiatorSentMsg1 srv k_as b c n_a in
     let now = global_timestamp () in
-    let ser_st = serialize_session_st now a a_si a_vi st_i_m1 in
-    update_session #oyrs_preds #now a a_si a_vi ser_st;
+    let ser_st = serialize_session_st now a new_sess_idx 0 st_i_m1 in
+    new_session #oyrs_preds #now a new_sess_idx 0 ser_st;
 
-    send_m1_idx
+    (new_sess_idx, send_m1_idx)
   )
   | _ -> error "i_send_m1: wrong session\n"
 
-let responder_send_msg_2 b msg1_idx b_si =
+let responder_send_msg_2 b msg1_idx b_ii =
   // get responder session
   let now = global_timestamp () in
-  let (|b_vi,ser_st|) = get_session #oyrs_preds #now b b_si in
+  let (|_,ser_st|) = get_session #oyrs_preds #now b b_ii in
 
   match parse_session_st ser_st with
   | Success (ResponderInit srv k_bs) -> (
@@ -109,12 +110,13 @@ let responder_send_msg_2 b msg1_idx b_si =
         let send_m2_idx = send #oyrs_preds b srv ser_msg2 in
 
         // update responder session
+        let new_sess_idx = new_session_number #oyrs_preds b in
         let st_r_m2 = ResponderSentMsg2 srv k_bs a c n_b in
         let now = global_timestamp () in
-        let ser_st = serialize_session_st now b b_si b_vi st_r_m2 in
-        update_session #oyrs_preds #now b b_si b_vi ser_st;
+        let ser_st = serialize_session_st now b new_sess_idx 0 st_r_m2 in
+        new_session #oyrs_preds #now b new_sess_idx 0 ser_st;
 
-        send_m2_idx
+        (new_sess_idx, send_m2_idx)
     )
     | _ -> error "r_send_m2: wrong message\n"
   )
@@ -409,18 +411,20 @@ let server_send_msg_3 srv msg2_idx =
   )
   | _ -> error "srv_send_m3: wrong message\n"
 
-let responder_send_msg_4 b msg3_idx b_si =
+let responder_send_msg_4 b msg3_idx b_ii b_si =
   // get responder session
   let now = global_timestamp () in
   let (|b_vi,ser_st|) = get_session #oyrs_preds #now b b_si in
+  let (|_,ser_init|) = get_session #oyrs_preds #now b b_ii in
 
-  match parse_session_st ser_st with
-  | Success (ResponderSentMsg2 srv k_bs a c n_b) -> (
+  match (parse_session_st ser_st, parse_session_st ser_init) with
+  | (Success (ResponderSentMsg2 srv k_bs a c n_b), Success (ResponderInit srv' k_bs')) -> (
     // receive and parse third message
-    let (|_,srv',ser_msg3|) = receive_i #oyrs_preds msg3_idx b in
+    let (|_,srv'',ser_msg3|) = receive_i #oyrs_preds msg3_idx b in
 
     // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
-    if srv <> srv' then error "r_send_m4: stored server does not match with actual server that sent the third message\n"
+    if srv <> srv' || srv <> srv'' then error "r_send_m4: stored server does not match with actual server that sent the third message\n"
+    else if k_bs <> k_bs' then error "r_send_m4: stored long term keys of responder do not match"
     else
       match parse_msg ser_msg3 with
       | Success (Msg3 c' (|tag_ev_a,c_ev_a|) (|tag_ev_b,c_ev_b|)) -> (
@@ -548,20 +552,23 @@ let responder_send_msg_4 b msg3_idx b_si =
       )
       | _ -> error "r_send_m4: wrong message\n"
   )
-  | _ -> error "r_send_m4: wrong session\n"
+  | _ -> error "r_send_m4: wrong sessions\n"
 
-let initiator_recv_msg_4 a msg4_idx a_si =
+let initiator_recv_msg_4 a msg4_idx a_ii a_si =
   // get initiator session
   let now = global_timestamp () in
   let (|a_vi,ser_st|) = get_session #oyrs_preds #now a a_si in
+  let (|_,ser_init|) = get_session #oyrs_preds #now a a_ii in
 
-  match parse_session_st ser_st with
-  | Success (InitiatorSentMsg1 srv k_as b c n_a) -> (
+  match (parse_session_st ser_st, parse_session_st ser_init) with
+  | (Success (InitiatorSentMsg1 srv k_as b c n_a), Success (InitiatorInit srv' k_as' b')) -> (
     // receive and parse fourth message
-    let (|_,b',ser_msg4|) = receive_i #oyrs_preds msg4_idx a in
+    let (|_,b'',ser_msg4|) = receive_i #oyrs_preds msg4_idx a in
 
     // TODO: should remove check, where some principal is compared with principal returned by "receive_i" function?
-    if b <> b' then error "i_recv_m4: stored responder does not match with actual responder that sent the fourth message\n"
+    if b <> b' || b <> b'' then error "i_recv_m4: stored responder does not match with actual responder that sent the fourth message\n"
+    else if srv <> srv' then error "i_recv_m4: stored servers do not match"
+    else if k_as <> k_as' then error "i_recv_m4: stored long term keys of initiator do not match"
     else
       match parse_msg ser_msg4 with
       | Success (Msg4 c' (|tag_ev_a,c_ev_a|)) -> (
@@ -683,5 +690,5 @@ let initiator_recv_msg_4 a msg4_idx a_si =
       )
       | _ -> error "i_recv_m4: wrong message\n"
   )
-  | _ -> error "i_recv_m4: wrong session\n"
+  | _ -> error "i_recv_m4: wrong sessions\n"
 #pop-options
