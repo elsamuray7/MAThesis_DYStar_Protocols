@@ -20,8 +20,7 @@ let clock = clock_
 let clock_get clock =
   let (counter, _) = clock in counter
 
-let clock_lte base other =
-  let (cnt_base, ts_base) = base in
-  let (cnt_other, ts_other) = other in
-  if ts_base = ts_other then Success (cnt_base <= cnt_other)
-  else Error "[clock_lte] Clocks are not comparable"
+let clock_lte ts base_cnt cmp =
+  let (cnt_cmp, ts_cmp) = cmp in
+  if ts_cmp = ts then Success (cnt_cmp <= base_cnt)
+  else Error "[clock_lte] Timestamps do not match"
