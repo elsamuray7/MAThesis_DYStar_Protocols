@@ -12,14 +12,6 @@ open LabeledRuntimeAPI
 open LabeledPKI
 
 
-/// Clock measuring relative trace growth within a Denning-Sacco protocol session
-/// from a specific timestamp
-val clock:Type0
-
-/// Get the trace growth value of a clock
-val clock_getval: clock:clock -> nat
-
-
 val intitiator_send_msg_1:
   initiator:principal ->
   server:principal ->
