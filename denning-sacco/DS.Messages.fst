@@ -1,6 +1,23 @@
 module DS.Messages
 
 
+let parse_encsigval_ sesv =
+  split sesv `bind` (fun (tag_bytes, rest) ->
+  bytes_to_string tag_bytes `bind` (fun tag ->
+  match tag with
+  | "cert_p" ->
+    split rest `bind` (fun (p_bytes, rest) ->
+    split rest `bind` (fun (pk_p, t_bytes) ->
+    bytes_to_string p_bytes `bind` (fun p ->
+    bytes_to_nat t_bytes `bind` (fun t ->
+    Success (SigCertP p pk_p t)))))
+  | "comm_key" ->
+    split rest `bind` (fun (ck, t_bytes) ->
+    bytes_to_nat t_bytes `bind` (fun t ->
+    Success (EncSigCommKey ck t)))
+  | t -> Error ("[parse_encsigval] invalid tag: " ^ t)
+  ))
+
 let serialize_encsigval i esv l =
   match esv with
   | SigCertP p pk_p t ->
@@ -29,6 +46,8 @@ let parse_encsigval #i #l sesv =
     Success (EncSigCommKey ck t)))
   | t -> Error ("[parse_encsigval] invalid tag: " ^ t)
   ))
+
+let parse_encsigval_lemma sesv = ()
 
 let parse_serialize_encsigval_lemma i esv l = ()
 
