@@ -64,9 +64,8 @@ let epred idx s e =
     match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes, bytes_to_nat t_bytes, bytes_to_nat clock_cnt_bytes) with
     | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
       a = s /\
-      (clock_cnt = M.recv_msg_2_delay /\
-      did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t clock_cnt) \/
-      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)) /\
+      clock_cnt <= M.recv_msg_2_delay /\
+      (did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t clock_cnt) \/ LC.corrupt_id idx (P srv)) /\
       was_rand_generated_before idx ck (readers [P a; P b]) (aead_usage "DS.comm_key")
     | _ -> False
   )

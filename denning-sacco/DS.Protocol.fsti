@@ -11,6 +11,7 @@ open DS.Clock
 open LabeledCryptoAPI
 open LabeledRuntimeAPI
 open LabeledPKI
+open SecurityLemmas
 
 module SR = DS.SendRecv
 

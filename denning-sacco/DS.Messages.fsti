@@ -44,9 +44,11 @@ let can_sign i s k ssv =
   exists p. LC.get_signkey_label ds_key_usages k == readers [P p] /\
   (match parse_sigval_ ssv with
   | Success (CertA a pk_a t) ->
-    (exists b pk_b. did_event_occur_before i p (event_certify a b p pk_a pk_b t 0))
+    later_than i t /\
+    (exists b pk_b. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
   | Success (CertB b pk_b t) ->
-    (exists a pk_a. did_event_occur_before i p (event_certify a b p pk_a pk_b t 0))
+    later_than i t /\
+    (exists a pk_a. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
   | Success (CommKey ck t) ->
     exists b. was_rand_generated_before i ck (readers [P p; P b]) (aead_usage "DS.comm_key") /\
     (exists srv pk_a pk_b. did_event_occur_before i p (event_send_key p b srv pk_a pk_b ck t recv_msg_2_delay))

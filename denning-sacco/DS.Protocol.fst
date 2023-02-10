@@ -88,7 +88,6 @@ let server_send_msg_2 srv msg1_idx =
       (msg2_idx, new_sess_idx, c_out)
   )
   | _ -> error "[srv_send_m2] wrong message"
-#pop-options
 
 let initiator_send_msg_3 c_in a msg2_idx a_si =
   // get and parse initiator session
@@ -108,22 +107,36 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
         let verk_srv = get_public_key #ds_preds #now a srv SIG "DS.sig_key" in
 
         // verify initiator and responder certificates
-        if verify #ds_global_usage #now #public #public verk_srv cert_a sig_cert_a then
-          if verify #ds_global_usage #now #public #public verk_srv cert_b sig_cert_b then
+        if verify #ds_global_usage #now #public #public verk_srv cert_a sig_cert_a then (
+          if verify #ds_global_usage #now #public #public verk_srv cert_b sig_cert_b then (
             // parse certificates
             match (parse_sigval cert_a, parse_sigval cert_b) with
             | (Success (CertA a pk_a t), Success (CertB b pk_b t')) -> (
               if t <> t' then error "[i_send_m3] timestamps in initiator and responder certificates do not match"
               else
-                if clock_lte t recv_msg_2_delay c_rm2 then
+                match clock_lte t recv_msg_2_delay c_rm2 with
+                | Success true -> (
                   // validate public key of initiator
                   let pk_a' = get_public_key #ds_preds #now a a PKE "DS.pke_key" in
                   if pk_a <> pk_a' then error "[i_send_m3] wrong initiator public key"
                   else
                     // generate communication key
+                    let prev = now in
                     let (|_,ck|) = rand_gen #ds_preds (readers [P a; P b]) (aead_usage "DS.comm_key") in
 
+                    // trigger event 'send_key'
+                    let event = event_send_key a b srv pk_a pk_b ck t (clock_get c_rm2) in
+                    let now = global_timestamp () in
+                    readers_is_injective srv;
+                    assert(can_flow prev (readers [P srv]) public \/ sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_a);
+                    assert(can_flow prev (readers [P srv]) public \/ sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_b);
+                    publishable_readers_implies_corruption #prev [P srv];
+                    assert(corrupt_id prev (P srv) \/ sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_a);
+                    assert(corrupt_id prev (P srv) \/ sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_b);
+                    trigger_event #ds_preds a event;
+
                     // look up sign key of initiator and generate sign nonce
+                    let now = global_timestamp () in
                     let (|_,sigk_a|) = get_private_key #ds_preds #now a SIG "DS.sig_key" in
                     let (|_,n_sig|) = rand_gen #ds_preds (readers [P a]) (nonce_usage "SIG_NONCE") in
 
@@ -141,7 +154,7 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
                     let c_comm_key = pke_enc #ds_global_usage #now #(readers [P a]) pk_b n_pke ev_comm_key in
 
                     // create and send third message
-                    let msg3 = Msg3 ser_cert_a sig_cert_a ser_cert_b sig_cert_b c_comm_key in
+                    let msg3 = Msg3 cert_a sig_cert_a cert_b sig_cert_b c_comm_key in
                     let ser_msg3 = serialize_msg now msg3 in
 
                     let (|msg3_idx,c_out|) = SR.send #now c_rm2 a b ser_msg3 in
@@ -154,12 +167,15 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
                     update_session #ds_preds #now a a_si a_vi ser_st;
 
                     (msg3_idx, c_out)
-                else error "[i_send_m3] message has been replayed"
+                )
+                | Success false -> error "[i_send_m3] message has been replayed"
+                | Error e -> error e
             )
             | _ -> error "[i_send_m3] wrong sigvals"
-          else error "[i_send_m3] verification of responder certificate failed"
-        else error "[i_send_m3] verification of initiator certificate failed"
+          ) else error "[i_send_m3] verification of responder certificate failed"
+        ) else error "[i_send_m3] verification of initiator certificate failed"
       )
       | _ -> error "[i_send_m3] wrong message"
   )
   | _ -> error "[i_send_m3] wrong session"
+#pop-options
