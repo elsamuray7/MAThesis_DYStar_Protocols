@@ -3,6 +3,7 @@ module DS.Sessions
 
 open SecrecyLabels
 open CryptoLib
+open GlobalRuntimeLib
 
 module M = DS.Messages
 module LC = LabeledCryptoAPI
@@ -12,11 +13,12 @@ module LR = LabeledRuntimeAPI
 (* Denning-Sacco specific aliases *)
 
 let is_labeled i b l = LC.is_labeled M.ds_global_usage i b l
+let is_pub_enc_key i b p = LC.is_public_enc_key M.ds_global_usage i b (readers [P p]) "DS.pke_key"
 /// Ensures 'b' is a Denning-Sacco communication key of 'p' and 'q'
 let is_comm_key i b p q = LC.is_aead_key M.ds_global_usage i b (readers [P p; P q]) "DS.comm_key"
 
-let str_to_bytes #i s = LC.string_to_bytes #(M.ds_global_usage) #i s
-let concat #i #l b1 b2 = LC.concat #(M.ds_global_usage) #i #l b1 b2
+let str_to_bytes #i = M.str_to_bytes #i
+let concat #i #l = M.concat #i #l
 
 
 noeq type session_st =
@@ -46,7 +48,38 @@ val parse_serialize_session_st_lemma: i:nat -> p:principal -> si:nat -> vi:nat -
 	  [SMTPat (parse_session_st (serialize_session_st i p si vi st))]
 
 
-let epred idx s e = True
+let epred idx s e =
+  match e with
+  | ("initiate",[a_bytes;b_bytes;srv_bytes]) ->
+    bytes_to_string a_bytes == Success s
+  | ("certify",[a_bytes;b_bytes;srv_bytes;pk_a;pk_b;t_bytes;clock_cnt_bytes]) -> (
+    match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes, bytes_to_nat t_bytes, bytes_to_nat clock_cnt_bytes) with
+    | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
+      srv = s /\
+      clock_cnt = 0 /\
+      is_pub_enc_key idx pk_a a /\ is_pub_enc_key idx pk_b b
+    | _ -> False
+  )
+  | ("send_key",[a_bytes;b_bytes;srv_bytes;pk_a;pk_b;ck;t_bytes;clock_cnt_bytes]) -> (
+    match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes, bytes_to_nat t_bytes, bytes_to_nat clock_cnt_bytes) with
+    | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
+      a = s /\
+      (clock_cnt = M.recv_msg_2_delay /\
+      did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t clock_cnt) \/
+      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)) /\
+      was_rand_generated_before idx ck (readers [P a; P b]) (aead_usage "DS.comm_key")
+    | _ -> False
+  )
+  | ("accept_key",[a_bytes;b_bytes;srv_bytes;pk_a;pk_b;ck;t_bytes;clock_cnt_bytes]) -> (
+    match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes, bytes_to_nat t_bytes, bytes_to_nat clock_cnt_bytes) with
+    | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
+      b = s /\
+      (clock_cnt = M.recv_msg_3_delay /\
+      did_event_occur_before idx a (M.event_send_key a b srv pk_a pk_b ck t clock_cnt) \/
+      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv))
+    | _ -> False
+  )
+  | _ -> False
 
 let ds_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (version:nat) (state:bytes) =
   M.is_msg trace_idx state (readers [V p state_session_idx version]) /\
