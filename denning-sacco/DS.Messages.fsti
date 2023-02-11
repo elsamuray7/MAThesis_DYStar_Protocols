@@ -38,7 +38,8 @@ val parse_sigval_: ssv:bytes -> result sigval
 
 let ds_key_usages : LC.key_usages = LC.default_key_usages
 
-let can_pke_encrypt (i:nat) s pk m = True
+let can_pke_encrypt (i:nat) s pk m = True (* TODO: Make assumption about label of responders
+secret key in order to infer concrete label of the communication key *)
 let can_aead_encrypt i s k m ad = True
 let can_sign i s k ssv =
   exists p. LC.get_signkey_label ds_key_usages k == readers [P p] /\
@@ -50,8 +51,8 @@ let can_sign i s k ssv =
     later_than i t /\
     (exists a pk_a. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
   | Success (CommKey ck t) ->
-    exists b. was_rand_generated_before i ck (readers [P p; P b]) (aead_usage "DS.comm_key") /\
-    (exists srv pk_a pk_b. did_event_occur_before i p (event_send_key p b srv pk_a pk_b ck t recv_msg_2_delay))
+    exists b pk_b. was_rand_generated_before i ck (join (readers [P p]) (LC.get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
+    (exists srv pk_a clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_before i p (event_send_key p b srv pk_a pk_b ck t clock_cnt))
   | _ -> False)
 let can_mac i s k m = True
 

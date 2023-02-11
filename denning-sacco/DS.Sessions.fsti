@@ -15,7 +15,7 @@ module LR = LabeledRuntimeAPI
 let is_labeled i b l = LC.is_labeled M.ds_global_usage i b l
 let is_pub_enc_key i b p = LC.is_public_enc_key M.ds_global_usage i b (readers [P p]) "DS.pke_key"
 /// Ensures 'b' is a Denning-Sacco communication key of 'p' and 'q'
-let is_comm_key i b p q = LC.is_aead_key M.ds_global_usage i b (readers [P p; P q]) "DS.comm_key"
+let is_comm_key i b p q = LC.is_aead_key M.ds_global_usage i b (join (readers [P p]) (readers [P q])) "DS.comm_key"
 
 let str_to_bytes #i = M.str_to_bytes #i
 let concat #i #l = M.concat #i #l
@@ -24,12 +24,14 @@ let concat #i #l = M.concat #i #l
 noeq type session_st =
   | InitiatorSentMsg1: b:principal -> srv:principal -> session_st
   | AuthServerSentMsg2: a:principal -> b:principal -> session_st
-  | InitiatorSentMsg3: b:principal -> ck:bytes -> session_st
+  | InitiatorSentMsg3: b:principal -> srv:principal -> ck:bytes -> session_st
   | ResponderRecvedMsg3: a:principal -> ck:bytes -> session_st
 
 let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
   match st with
-  | InitiatorSentMsg3 b ck -> is_comm_key i ck p b
+  | InitiatorSentMsg3 b srv ck ->
+    M.is_msg i ck (readers [P p]) /\
+    (is_comm_key i ck p b \/ LC.corrupt_id i (P srv))
   | ResponderRecvedMsg3 a ck ->
     M.is_msg i ck (readers [P p]) /\
     (is_labeled i ck (readers [P a; P p]) \/ LC.corrupt_id i (P a) \/ LC.corrupt_id i (P p))
@@ -65,8 +67,8 @@ let epred idx s e =
     | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
       a = s /\
       clock_cnt <= M.recv_msg_2_delay /\
-      (did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t clock_cnt) \/ LC.corrupt_id idx (P srv)) /\
-      was_rand_generated_before idx ck (readers [P a; P b]) (aead_usage "DS.comm_key")
+      (did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t 0) \/ LC.corrupt_id idx (P srv)) /\
+      was_rand_generated_before idx ck (join (readers [P a]) (LC.get_sk_label M.ds_key_usages pk_b)) (aead_usage "DS.comm_key")
     | _ -> False
   )
   | ("accept_key",[a_bytes;b_bytes;srv_bytes;pk_a;pk_b;ck;t_bytes;clock_cnt_bytes]) -> (
