@@ -24,6 +24,8 @@ let parse_sigval_ ssv =
   | t -> Error ("[parse_encsigval] invalid tag: " ^ t)
   ))
 
+let parse_encval_comm_key_ enc_sig_ck = split enc_sig_ck
+
 let serialize_sigval i sv l =
   match sv with
   | CertA a pk_a t ->
@@ -69,9 +71,14 @@ let parse_sigval_lemma ssv = ()
 let parse_serialize_sigval_lemma i sv l = ()
 
 
-let encval_comm_key #i #l ser_ck sig_ck = concat #i #l ser_ck sig_ck
-let parse_encval_comm_key #i #l enc_sig_ck = split #i #l enc_sig_ck
+let encval_comm_key i ser_ck sig_ck l = concat #i #l ser_ck sig_ck
+let parse_encval_comm_key #i #l enc_sig_ck =
+  split #i #l enc_sig_ck `bind` (fun (ser_ck, sig_ck) ->
+  let ser_ck:bytes = ser_ck in
+  let sig_ck:bytes = sig_ck in
+  Success (ser_ck, sig_ck))
 
+let parse_encval_lemma #i #l enc_sig_ck = ()
 let parse_serialize_encval_lemma #i #l ser_ck sig_ck = ()
 
 

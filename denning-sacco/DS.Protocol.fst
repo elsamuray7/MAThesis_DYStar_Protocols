@@ -37,7 +37,7 @@ let server_send_msg_2 srv msg1_idx =
     if a <> a' then error "[srv_send_m2] initiator from received message does not match with actual initiator"
     else
       // look up public keys of initiator and responder
-      let pk_a = get_public_key #ds_preds #now srv a PKE "DS.pke_key" in
+      let pk_a = get_public_key #ds_preds #now srv a SIG "DS.sig_key" in
       let pk_b = get_public_key #ds_preds #now srv b PKE "DS.pke_key" in
 
       // initialize clock
@@ -94,13 +94,13 @@ let server_send_msg_2 srv msg1_idx =
 let trigger_event_send_key (prev:timestamp) (a b srv:principal) (pk_a pk_b ck:bytes) (t:timestamp) (clock_cnt:nat) (cert_a cert_b:msg ds_global_usage prev public) (verk_srv:verify_key ds_global_usage prev (readers [P srv]) "DS.sig_key") :
   LCrypto timestamp (pki ds_preds)
   (requires (fun t0 -> prev < trace_len t0 /\
-    (clock_cnt <= recv_msg_2_delay) /\
+    clock_cnt <= recv_msg_2_delay /\
+    was_rand_generated_before (trace_len t0) ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
     parse_sigval_ cert_a == Success (CertA a pk_a t) /\
     parse_sigval_ cert_b == Success (CertB b pk_b t) /\
     (can_flow prev (readers [P srv]) public \/
-      sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_a /\
-      sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_b) /\
-      was_rand_generated_before (trace_len t0) ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key")
+    sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_a /\
+    sign_pred ds_usage_preds prev "DS.sig_key" verk_srv cert_b)
   ))
   (ensures (fun t0 now t1 -> now == trace_len t0 /\ trace_len t1 == trace_len t0 + 1 /\
     did_event_occur_at now a (event_send_key a b srv pk_a pk_b ck t clock_cnt))) =
@@ -114,6 +114,7 @@ let trigger_event_send_key (prev:timestamp) (a b srv:principal) (pk_a pk_b ck:by
   assert(get_signkey_label ds_key_usages verk_srv == readers [P srv]);
   assert(corrupt_id prev (P srv)
     \/ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0));
+  sk_label_lemma ds_global_usage t pk_b (readers [P b]);
   trigger_event #ds_preds a event;
   now
 
@@ -122,6 +123,7 @@ let initiator_send_msg_3_helper (now:timestamp) (a b srv:principal) (ck pk_a pk_
   (requires (fun t0 -> now == trace_len t0 /\
     clock_cnt == (clock_get c_rm2) /\ clock_cnt <= recv_msg_2_delay /\
     was_rand_generated_before now ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
+    is_ver_key now pk_a a /\ pk_a == vk #ds_global_usage #now #(readers [P a]) sigk_a /\
     is_msg ds_global_usage now pk_b public /\
     did_event_occur_before now a (event_send_key a b srv pk_a pk_b ck t clock_cnt) /\
     is_labeled ds_global_usage now n_sig (readers [P a]) /\
@@ -140,17 +142,20 @@ let initiator_send_msg_3_helper (now:timestamp) (a b srv:principal) (ck pk_a pk_
   assert(is_msg ds_global_usage now ck l_ck);
   let ser_comm_key = serialize_sigval now sv_comm_key l_ck in
   readers_is_injective a;
-  assert(get_signkey_label ds_key_usages (vk #ds_global_usage #now #(readers [P a]) sigk_a) == readers [P a]);
+  verification_key_label_lemma ds_global_usage now pk_a (readers [P a]);
+  assert(get_signkey_label ds_key_usages pk_a == readers [P a]);
   assert(was_rand_generated_before now ck l_ck (aead_usage "DS.comm_key"));
   assert(did_event_occur_before now a (event_send_key a b srv pk_a pk_b ck t (clock_get c_rm2)));
   parse_serialize_sigval_lemma now sv_comm_key l_ck;
-  assert(can_sign now "DS.sig_key" (vk #ds_global_usage #now #(readers [P a]) sigk_a) ser_comm_key);
+  assert(can_sign now "DS.sig_key" pk_a ser_comm_key);
   let sig_comm_key = sign #ds_global_usage #now #(readers [P a]) #l_ck sigk_a n_sig ser_comm_key in
 
   // create and encrypt encval containing signed sigval with communication key
-  let ev_comm_key = encval_comm_key ser_comm_key sig_comm_key in
+  let ev_comm_key = encval_comm_key now ser_comm_key sig_comm_key l_ck in
   assert(is_msg ds_global_usage now ck (get_sk_label ds_key_usages pk_b));
   assert(can_flow now (get_label ds_key_usages ev_comm_key) (readers [P a]));
+  parse_serialize_encval_lemma #now #l_ck ser_comm_key sig_comm_key;
+  assert(can_pke_encrypt now "DS.pke_key" pk_b ev_comm_key);
   let c_comm_key = pke_enc #ds_global_usage #now #(readers [P a]) pk_b n_pke ev_comm_key in
 
   // create and send third message
@@ -181,14 +186,19 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
           if verify #ds_global_usage #now #public #public verk_srv cert_b sig_cert_b then (
             // parse certificates
             match (parse_sigval cert_a, parse_sigval cert_b) with
-            | (Success (CertA a pk_a t), Success (CertB b pk_b t')) -> (
-              if t <> t' then error "[i_send_m3] timestamps in initiator and responder certificates do not match"
+            | (Success (CertA a' pk_a t), Success (CertB b' pk_b t')) -> (
+              if a <> a' || b <> b' then error "[i_send_m3] initiator or responder from certificate does not match with actual initiator or responder"
+              else if t <> t' then error "[i_send_m3] timestamps in initiator and responder certificates do not match"
               else
+                // check whether message is replay
                 match clock_lte t recv_msg_2_delay c_rm2 with
                 | Success true -> (
+                  // look up sign key of initiator
+                  let (|_,sigk_a|) = get_private_key #ds_preds #now a SIG "DS.sig_key" in
+
                   // validate public key of initiator
-                  let pk_a' = get_public_key #ds_preds #now a a PKE "DS.pke_key" in
-                  if pk_a <> pk_a' then error "[i_send_m3] wrong initiator public key"
+                  let verk_a = vk #ds_global_usage #now #(readers [P a]) sigk_a in
+                  if pk_a <> verk_a then error "[i_send_m3] wrong initiator public key"
                   else
                     // generate communication key
                     let prev = now in
@@ -201,12 +211,8 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
                     let clock_cnt_event = clock_get c_rm2 in
                     let t_event = trigger_event_send_key prev a b srv pk_a pk_b ck t clock_cnt_event cert_a cert_b verk_srv in
 
-                    // look up sign key of initiator and generate sign nonce
-                    let now = global_timestamp () in
-                    let (|_,sigk_a|) = get_private_key #ds_preds #now a SIG "DS.sig_key" in
+                    // generate sign and pke nonce
                     let (|_,n_sig|) = rand_gen #ds_preds (readers [P a]) (nonce_usage "SIG_NONCE") in
-
-                    // generate pke nonce
                     let (|_,n_pke|) = rand_gen #ds_preds (readers [P a]) (nonce_usage "PKE_NONCE") in
 
                     // create and send third message
@@ -238,4 +244,152 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
       | _ -> error "[i_send_m3] wrong message"
   )
   | _ -> error "[i_send_m3] wrong session"
+
+let trigger_event_accept_key (now:timestamp) (a b srv:principal) (pk_a pk_b ck:bytes)
+  (t:timestamp) (clock_cnt:nat) (cert_a cert_b:msg ds_global_usage now public)
+  (ev_comm_key:msg ds_global_usage now (readers [P b]))
+  (ser_comm_key:msg ds_global_usage now (readers [P b]))
+  (verk_srv:verify_key ds_global_usage now (readers [P srv]) "DS.sig_key") :
+  //(sk_b:private_dec_key ds_global_usage now (readers [P b]) "DS.pke_key")
+  LCrypto unit (pki ds_preds)
+  (requires (fun t0 -> now == trace_len t0 /\
+    clock_cnt <= recv_msg_3_delay /\
+    is_pub_enc_key now pk_b b /\
+    parse_sigval_ cert_a == Success (CertA a pk_a t) /\
+    parse_sigval_ cert_b == Success (CertB b pk_b t) /\
+    parse_sigval_ ser_comm_key == Success (CommKey ck t) /\
+    (exists sv. parse_encval_comm_key_ ev_comm_key == Success (ser_comm_key, sv)) /\
+    //(can_flow now (readers [P srv]) public \/
+    //sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a /\
+    //sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b) /\
+    (corrupt_id now (P srv) \/ later_than now t /\
+    did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0)) /\
+    (is_ver_key now pk_a a ==> (can_flow now (readers [P a]) public \/
+    sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key)) /\
+    (is_publishable ds_global_usage now ev_comm_key \/ pke_pred ds_usage_preds now "DS.pke_key" pk_b ev_comm_key)
+  ))
+  (ensures (fun t0 _ t1 -> trace_len t1 == trace_len t0 + 1 /\
+    did_event_occur_at now b (event_accept_key a b srv pk_a pk_b ck t clock_cnt))) =
+  let event = event_accept_key a b srv pk_a pk_b ck t clock_cnt in
+  (*publishable_readers_implies_corruption #now [P srv];
+  assert(corrupt_id now (P srv) \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a);
+  assert(corrupt_id now (P srv) \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b);
+  readers_is_injective srv;
+  verification_key_label_lemma ds_global_usage now verk_srv (readers [P srv]);
+  assert(get_signkey_label ds_key_usages verk_srv == readers [P srv]);
+  assert(corrupt_id now (P srv)
+    \/ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0));
+  assert(corrupt_id now (P srv) \/ later_than now t);*)
+  assert(corrupt_id now (P srv) \/ is_ver_key t pk_a a);
+  assert(can_flow now (readers [P a]) public
+    \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);
+  publishable_readers_implies_corruption #now [P a];
+  assert(corrupt_id now (P a)
+    \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);
+  assert(corrupt_id now (P a)
+    \/ was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key"));
+  assert(corrupt_id now (P a)
+    \/ (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_before now a (event_send_key a b srv pk_a pk_b ck t clock_cnt')));
+  (trigger_event #ds_preds b event)
+
+let responder_recv_msg_3 c_in b srv msg3_idx =
+  // receive and parse second message
+  let (|_,c_out,a,ser_msg3|) = SR.receive_i msg3_idx c_in b in
+
+  match parse_msg ser_msg3 with
+  | Success (Msg3 cert_a sig_cert_a cert_b sig_cert_b c_comm_key) -> (
+    // look up verification key of server
+    let now = global_timestamp () in
+    let verk_srv = get_public_key #ds_preds #now b srv SIG "DS.sig_key" in
+
+    // verify initiator and responder certificates
+    if verify #ds_global_usage #now #public #public verk_srv cert_a sig_cert_a then (
+      if verify #ds_global_usage #now #public #public verk_srv cert_b sig_cert_b then (
+        // parse certificates
+        match (parse_sigval cert_a, parse_sigval cert_b) with
+        | (Success (CertA a' pk_a t), Success (CertB b' pk_b t')) -> (
+          if a <> a' || b <> b' then error "[r_recv_m3] initiator or responder from certificate does not match with actual initiator or responder"
+          else if t <> t' then error "[r_recv_m3] timestamps in initiator and responder certificates do not match"
+          else
+            // look up private key of responder
+            let (|_,sk_b|) = get_private_key #ds_preds #now b PKE "DS.pke_key" in
+
+            // validate public key of responder
+            let pk_b' = pk #ds_global_usage #now #(readers [P b]) sk_b in
+            if pk_b <> pk_b' then error "[r_recv_m3] wrong responder public key"
+            else
+              // decrypt communication key and timestamp encrypted and signed by initiator
+              match pke_dec #ds_global_usage #now #(readers [P b]) sk_b c_comm_key with
+              | Success ev_comm_key -> (
+                // parse encval containing communication key and timestamp signed by initiator
+                match parse_encval_comm_key ev_comm_key with
+                | Success (ser_comm_key, sig_comm_key) -> (
+                  // verify signed communication key and timestamp
+                  if verify #ds_global_usage #now #(readers [P b]) #(readers [P b]) pk_a ser_comm_key sig_comm_key then (
+                    // parse signed communication key and timestamp
+                    match parse_sigval #now #(readers [P b]) ser_comm_key with
+                    | Success (CommKey ck t'') -> (
+                      if t <> t'' then error "[r_recv_m3] wrong timestamp in sigval"
+                      else
+                        // check whether message is replay
+                        match clock_lte t recv_msg_3_delay c_out with
+                        | Success true -> (
+                          // trigger event 'accept key'
+                          parse_sigval_lemma cert_a;
+                          parse_sigval_lemma cert_b;
+                          parse_sigval_lemma #now #(readers [P b]) ser_comm_key;
+                          parse_encval_lemma ev_comm_key;
+                          assert(can_flow now (readers [P srv]) public
+                            \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a);
+                          assert(can_flow now (readers [P srv]) public
+                            \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b);
+                          publishable_readers_implies_corruption #now [P srv];
+                          readers_is_injective srv;
+                          verification_key_label_lemma ds_global_usage now verk_srv (readers [P srv]);
+                          assert(get_signkey_label ds_key_usages verk_srv == readers [P srv]);
+                          assert(corrupt_id now (P srv) \/ later_than now t
+                            /\ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0));
+                          assert(corrupt_id now (P srv) \/ later_than now t
+                            /\ epred t srv (event_certify a b srv pk_a pk_b t 0));
+                          assert(corrupt_id now (P srv) \/ is_ver_key t pk_a a);
+                          readers_is_injective a;
+                          assert(corrupt_id now (P srv) \/ can_flow now (readers [P a]) public
+                            \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);
+                          publishable_readers_implies_corruption #now [P a];
+                          assert(is_publishable ds_global_usage now sk_b
+                            \/ is_private_dec_key ds_global_usage now sk_b (readers [P b]) "DS.pke_key");
+                          assert(is_publishable ds_global_usage now sk_b
+                            \/ is_publishable ds_global_usage now ev_comm_key
+                            \/ pke_pred ds_usage_preds now "DS.pke_key" pk_b ev_comm_key);
+                          publishable_readers_implies_corruption #now [P b];
+                          let clock_cnt_event = clock_get c_out in
+                          let event = event_accept_key a b srv pk_a pk_b ck t clock_cnt_event in
+                          trigger_event #ds_preds b event;
+
+                          // store responder session
+                          let new_sess_idx = new_session_number #ds_preds b in
+                          let st_r_rcvd_m3 = ResponderRecvedMsg3 a srv ck in
+                          let now = global_timestamp () in
+                          let ser_st = serialize_session_st now b new_sess_idx 0 st_r_rcvd_m3 in
+
+                          admit();
+                          new_session #ds_preds #now b new_sess_idx 0 ser_st;
+
+                          (new_sess_idx, c_out)
+                        )
+                        | Success false -> error "[r_recv_m3] message has been replayed"
+                        | Error e -> error e
+                    )
+                    | _ -> error "[r_recv_m3] wrong sigval"
+                  ) else error "[r_recv_m3] verification of signed communication key and timestamp failed"
+                )
+                | _ -> error "[r_recv_m3] parsing encval containing communication key failed"
+              )
+              | Error e -> error ("[r_recv_m3] decryption of encrypted and signed communication key and timestamp failed: " ^ e)
+        )
+        | _ -> error "[r_recv_m3] wrong sigvals"
+      ) else error "[r_recv_m3] verification of responder certificate failed"
+    ) else error "[r_recv_m3] verification of initiator certificate failed"
+  )
+  | _ -> error "[r_recv_m3] wrong message"
 #pop-options

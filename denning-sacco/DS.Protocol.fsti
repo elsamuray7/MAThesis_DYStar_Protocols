@@ -45,6 +45,7 @@ val initiator_send_msg_3:
 val responder_recv_msg_3:
   c_in:clock ->
   responder:principal ->
+  server:principal ->
   msg_idx:timestamp ->
   LCrypto (sess_idx:nat * c_out:clock) (pki ds_preds)
   (requires fun t0 -> msg_idx < trace_len t0)

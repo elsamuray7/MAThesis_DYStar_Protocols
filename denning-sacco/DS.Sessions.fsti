@@ -14,6 +14,7 @@ module LR = LabeledRuntimeAPI
 
 let is_labeled i b l = LC.is_labeled M.ds_global_usage i b l
 let is_pub_enc_key i b p = LC.is_public_enc_key M.ds_global_usage i b (readers [P p]) "DS.pke_key"
+let is_ver_key i b p = LC.is_verification_key M.ds_global_usage i b (readers [P p]) "DS.sig_key"
 /// Ensures 'b' is a Denning-Sacco communication key of 'p' and 'q'
 let is_comm_key i b p q = LC.is_aead_key M.ds_global_usage i b (join (readers [P p]) (readers [P q])) "DS.comm_key"
 
@@ -25,16 +26,16 @@ noeq type session_st =
   | InitiatorSentMsg1: b:principal -> srv:principal -> session_st
   | AuthServerSentMsg2: a:principal -> b:principal -> session_st
   | InitiatorSentMsg3: b:principal -> srv:principal -> ck:bytes -> session_st
-  | ResponderRecvedMsg3: a:principal -> ck:bytes -> session_st
+  | ResponderRecvedMsg3: a:principal -> srv:principal -> ck:bytes -> session_st
 
 let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
   match st with
   | InitiatorSentMsg3 b srv ck ->
     M.is_msg i ck (readers [P p]) /\
     (is_comm_key i ck p b \/ LC.corrupt_id i (P srv))
-  | ResponderRecvedMsg3 a ck ->
+  | ResponderRecvedMsg3 a srv ck ->
     M.is_msg i ck (readers [P p]) /\
-    (is_labeled i ck (readers [P a; P p]) \/ LC.corrupt_id i (P a) \/ LC.corrupt_id i (P p))
+    (is_labeled i ck (join (readers [P a]) (readers [P p])) \/ LC.corrupt_id i (P a) \/ LC.corrupt_id i (P srv))
   | _ -> True
 
 let valid_session_later (i j:timestamp) (p:principal) (si vi:nat) (st:session_st) :
@@ -59,7 +60,7 @@ let epred idx s e =
     | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
       srv = s /\
       clock_cnt = 0 /\
-      is_pub_enc_key idx pk_a a /\ is_pub_enc_key idx pk_b b
+      is_ver_key idx pk_a a /\ is_pub_enc_key idx pk_b b
     | _ -> False
   )
   | ("send_key",[a_bytes;b_bytes;srv_bytes;pk_a;pk_b;ck;t_bytes;clock_cnt_bytes]) -> (
@@ -67,7 +68,8 @@ let epred idx s e =
     | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
       a = s /\
       clock_cnt <= M.recv_msg_2_delay /\
-      (did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t 0) \/ LC.corrupt_id idx (P srv)) /\
+      (LC.get_sk_label M.ds_key_usages pk_b == readers [P b] /\
+      did_event_occur_before idx srv (M.event_certify a b srv pk_a pk_b t 0) \/ LC.corrupt_id idx (P srv)) /\
       was_rand_generated_before idx ck (join (readers [P a]) (LC.get_sk_label M.ds_key_usages pk_b)) (aead_usage "DS.comm_key")
     | _ -> False
   )
@@ -75,9 +77,9 @@ let epred idx s e =
     match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes, bytes_to_nat t_bytes, bytes_to_nat clock_cnt_bytes) with
     | (Success a, Success b, Success srv, Success t, Success clock_cnt) ->
       b = s /\
-      (clock_cnt = M.recv_msg_3_delay /\
-      did_event_occur_before idx a (M.event_send_key a b srv pk_a pk_b ck t clock_cnt) \/
-      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv))
+      clock_cnt <= M.recv_msg_3_delay /\
+      ((exists clock_cnt'. clock_cnt' <= M.recv_msg_2_delay /\ did_event_occur_before idx a (M.event_send_key a b srv pk_a pk_b ck t clock_cnt')) \/
+      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P srv))
     | _ -> False
   )
   | _ -> False

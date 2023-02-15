@@ -22,11 +22,12 @@ let serialize_session_st i p si vi st =
     LC.includes_can_flow_lemma i [P p] [V p si vi];
     assert(covers (P p) (V p si vi)); // OK??
     concat #i #l tag (concat #i #l b_bytes (concat #i #l srv_bytes ck))
-  | ResponderRecvedMsg3 a ck ->
+  | ResponderRecvedMsg3 a srv ck ->
     let tag = str_to_bytes #i "r_rcvd_m3" in
     let a_bytes = str_to_bytes #i a in
+    let srv_bytes = str_to_bytes #i srv in
     LC.can_flow_transitive i (LC.get_label M.ds_key_usages ck) (readers [P p]) l;
-    concat #i #l tag (concat #i #l a_bytes ck)
+    concat #i #l tag (concat #i #l a_bytes (concat #i #l srv_bytes ck))
 
 let parse_session_st sst =
   split sst `bind` (fun (tag_bytes, rest) ->
@@ -49,9 +50,11 @@ let parse_session_st sst =
     bytes_to_string srv_bytes `bind` (fun srv ->
     Success (InitiatorSentMsg3 b srv ck)))))
   | "r_rcvd_m3" ->
-    split rest `bind` (fun (a_bytes, ck) ->
+    split rest `bind` (fun (a_bytes, rest) ->
+    split rest `bind` (fun (srv_bytes, ck) ->
     bytes_to_string a_bytes `bind` (fun a ->
-    Success (ResponderRecvedMsg3 a ck)))
+    bytes_to_string srv_bytes `bind` (fun srv ->
+    Success (ResponderRecvedMsg3 a srv ck)))))
   | t -> Error ("[parse_session_st] invalid tag: " ^ t)
   ))
 
@@ -60,6 +63,6 @@ let parse_serialize_session_st_lemma i p si vi st =
   match st with
   | InitiatorSentMsg3 b srv ck ->
     LC.can_flow_transitive i (LC.get_label M.ds_key_usages ck) (readers [P p]) l
-  | ResponderRecvedMsg3 a ck ->
+  | ResponderRecvedMsg3 a srv ck ->
     LC.can_flow_transitive i (LC.get_label M.ds_key_usages ck) (readers [P p]) l
   | _ -> ()
