@@ -81,6 +81,27 @@ let parse_encval_comm_key #i #l enc_sig_ck =
 let parse_encval_lemma #i #l enc_sig_ck = ()
 let parse_serialize_encval_lemma #i #l ser_ck sig_ck = ()
 
+let encval_comm_key_publishable_implies_comm_key_publishable i enc_sig_ck =
+  LC.splittable_term_publishable_implies_components_publishable_forall ds_global_usage;
+  split_is_split_len_prefixed enc_sig_ck;
+  match parse_encval_comm_key_ enc_sig_ck with
+  | Success (ser_ck, sig_ck) -> (
+    assert(is_succ2 (split_len_prefixed 4 enc_sig_ck) ser_ck sig_ck);
+    assert(LC.is_publishable ds_global_usage i enc_sig_ck ==> LC.is_publishable ds_global_usage i ser_ck);
+    split_is_split_len_prefixed ser_ck;
+    match parse_sigval_ ser_ck with
+    | Success (CommKey ck t) ->
+      let Success (tag_bytes, rest) = split_len_prefixed 4 ser_ck in
+      assert(is_succ2 (split_len_prefixed 4 ser_ck) tag_bytes rest);
+      assert(LC.is_publishable ds_global_usage i enc_sig_ck ==> LC.is_publishable ds_global_usage i rest);
+      split_is_split_len_prefixed rest;
+      let Success (ck', t_bytes) = split_len_prefixed 4 rest in
+      assert(is_succ2 (split_len_prefixed 4 rest) ck' t_bytes /\ ck' == ck);
+      assert(LC.is_publishable ds_global_usage i enc_sig_ck ==> LC.is_publishable ds_global_usage i ck')
+    | _ -> ()
+  )
+  | _ -> ()
+
 
 let serialize_msg i m =
   match m with

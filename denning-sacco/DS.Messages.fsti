@@ -4,6 +4,7 @@ module DS.Messages
 open SecrecyLabels
 open GlobalRuntimeLib
 open CryptoLib
+open DS.Helper
 
 module LC = LabeledCryptoAPI
 
@@ -43,30 +44,33 @@ val parse_encval_comm_key_: enc_sig_ck:bytes -> result (ser_ck:bytes * sig_ck:by
 
 let ds_key_usages : LC.key_usages = LC.default_key_usages
 
+let can_aead_encrypt i s k m ad = True
+let can_sign (i:nat) s k ssv =
+  exists p. LC.get_signkey_label ds_key_usages k == readers [P p] /\
+  (match parse_sigval_ ssv with
+  | Success (CertA a pk_a t) ->
+    t < i /\
+    (exists b pk_b. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
+  | Success (CertB b pk_b t) ->
+    t < i /\
+    (exists a pk_a. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
+  | Success (CommKey ck t) ->
+    i > 2 /\
+    (exists b srv pk_b. was_rand_generated_before i ck (join (readers [P p]) (LC.get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
+    (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_at (i-3) p (event_send_key p b srv k pk_b ck t clock_cnt)))
+  | _ -> False)
 let can_pke_encrypt (i:nat) s pk sev =
   match parse_encval_comm_key_ sev with
   | Success (ser_ck, _) -> (
     match parse_sigval_ ser_ck with
     | Success (CommKey ck t) ->
-      exists a b srv pk_a. was_rand_generated_before i ck (join (readers [P a]) (LC.get_sk_label ds_key_usages pk)) (aead_usage "DS.comm_key") /\
-      (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_before i a (event_send_key a b srv pk_a pk ck t clock_cnt))
+      i > 2 /\
+      (exists a b srv pk_a. LC.get_signkey_label ds_key_usages pk_a == readers [P a] /\
+      was_rand_generated_before i ck (join (readers [P a]) (LC.get_sk_label ds_key_usages pk)) (aead_usage "DS.comm_key") /\
+      (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_at (i-3) a (event_send_key a b srv pk_a pk ck t clock_cnt)))
     | _ -> False
   )
   | _ -> False
-let can_aead_encrypt i s k m ad = True
-let can_sign i s k ssv =
-  exists p. LC.get_signkey_label ds_key_usages k == readers [P p] /\
-  (match parse_sigval_ ssv with
-  | Success (CertA a pk_a t) ->
-    later_than i t /\
-    (exists b pk_b. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
-  | Success (CertB b pk_b t) ->
-    later_than i t /\
-    (exists a pk_a. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
-  | Success (CommKey ck t) ->
-    exists b srv pk_b. was_rand_generated_before i ck (join (readers [P p]) (LC.get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
-    (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_before i p (event_send_key p b srv k pk_b ck t clock_cnt))
-  | _ -> False)
 let can_mac i s k m = True
 
 let ds_usage_preds : LC.usage_preds = {
@@ -146,6 +150,19 @@ val parse_serialize_encval_lemma: #i:nat -> #l:label -> ser_ck:bytes -> sig_ck:b
                   parse_encval_comm_key_ (encval_comm_key i ser_ck sig_ck l) == Success (ser_ck, sig_ck)))
         [SMTPat (parse_encval_comm_key (encval_comm_key i ser_ck sig_ck l));
          SMTPat (parse_encval_comm_key_ (encval_comm_key i ser_ck sig_ck l))]
+
+/// Publishability of message part containing the communication key implies publishability
+/// of the communication key itself
+val encval_comm_key_publishable_implies_comm_key_publishable: i:nat -> enc_sig_ck:bytes ->
+  Lemma (LC.is_publishable ds_global_usage i enc_sig_ck ==> (
+            match parse_encval_comm_key_ enc_sig_ck with
+            | Success (ser_ck, _) -> (
+              match parse_sigval_ ser_ck with
+              | Success (CommKey ck t) -> LC.is_publishable ds_global_usage i ck
+              | _ -> True
+            )
+            | _ -> True
+        ))
 
 
 noeq type message (i:nat) =

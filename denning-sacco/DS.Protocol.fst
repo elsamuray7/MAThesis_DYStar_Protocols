@@ -120,12 +120,12 @@ let trigger_event_send_key (prev:timestamp) (a b srv:principal) (pk_a pk_b ck:by
 
 let initiator_send_msg_3_helper (now:timestamp) (a b srv:principal) (ck pk_a pk_b:bytes) (t:timestamp) (cert_a sig_cert_a cert_b sig_cert_b:msg ds_global_usage now public) (sigk_a:sign_key ds_global_usage now (readers [P a]) "DS.sig_key") (n_sig n_pke:bytes) (clock_cnt:nat) (c_rm2:clock) :
   LCrypto (si:timestamp & c_out:clock) (pki ds_preds)
-  (requires (fun t0 -> now == trace_len t0 /\
+  (requires (fun t0 -> now == trace_len t0 /\ now > 2 /\
     clock_cnt == (clock_get c_rm2) /\ clock_cnt <= recv_msg_2_delay /\
     was_rand_generated_before now ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
     is_ver_key now pk_a a /\ pk_a == vk #ds_global_usage #now #(readers [P a]) sigk_a /\
     is_msg ds_global_usage now pk_b public /\
-    did_event_occur_before now a (event_send_key a b srv pk_a pk_b ck t clock_cnt) /\
+    did_event_occur_at (now-3) a (event_send_key a b srv pk_a pk_b ck t clock_cnt) /\
     is_labeled ds_global_usage now n_sig (readers [P a]) /\
     is_pke_nonce ds_global_usage now n_pke (readers [P a])
   ))
@@ -245,52 +245,146 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
   )
   | _ -> error "[i_send_m3] wrong session"
 
+let trigger_event_accept_key_helper (now:timestamp) (a b srv:principal) (pk_a pk_b ck:bytes)
+  (t:timestamp) (clock_cnt:nat) (cert_a cert_b:msg ds_global_usage now public)
+  (ev_comm_key:msg ds_global_usage now (readers [P b]))
+  (ser_comm_key:msg ds_global_usage now (readers [P b]))
+  (verk_srv:verify_key ds_global_usage now (readers [P srv]) "DS.sig_key") :
+  LCrypto unit (pki ds_preds)
+  (requires (fun t0 -> now == trace_len t0 /\
+    clock_cnt <= recv_msg_3_delay /\
+    a =!= b /\
+    (corrupt_id now (P srv) \/ is_ver_key now pk_a a) /\
+    is_pub_enc_key now pk_b b /\
+    parse_sigval_ cert_a == Success (CertA a pk_a t) /\
+    parse_sigval_ cert_b == Success (CertB b pk_b t) /\
+    parse_sigval_ ser_comm_key == Success (CommKey ck t) /\
+    (exists sig_ck. parse_encval_comm_key_ ev_comm_key == Success (ser_comm_key, sig_ck)) /\
+    (corrupt_id now (P srv) \/ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0)) /\
+    (corrupt_id now (P srv) \/ corrupt_id now (P a) \/
+      (exists i. later_than now i /\ (i > 2 /\
+      (exists b' srv' pk_b'. was_rand_generated_before i ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b')) (aead_usage "DS.comm_key") /\
+      (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_at (i-3) a (event_send_key a b' srv' pk_a pk_b' ck t clock_cnt')))))) /\
+    (is_publishable ds_global_usage now ev_comm_key \/
+      (exists i. later_than now i /\ (i > 2 /\
+      (exists a' b' srv' pk_a'. get_signkey_label ds_key_usages pk_a' == readers [P a'] /\
+      was_rand_generated_before i ck (join (readers [P a']) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
+      (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_at (i-3) a' (event_send_key a' b' srv' pk_a' pk_b ck t clock_cnt'))))))
+  ))
+  (ensures (fun t0 _ t1 -> trace_len t1 == trace_len t0 /\
+    (corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key \/
+    was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key") /\
+    (exists srv' clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_before now a (event_send_key a b srv pk_a pk_b ck t clock_cnt') \/ corrupt_id now (P srv'))))) =
+  readers_is_injective a;
+  verification_key_label_lemma ds_global_usage t pk_a (readers [P a]);
+  readers_is_injective b;
+  sk_label_lemma ds_global_usage now pk_b (readers [P b]);
+
+  // use readers injectivity of initiator and responder and join injectivity to infer actual readers of ck
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key
+    \/ (exists a' pk_b'. was_rand_generated_before now ck (join (readers [P a']) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key")
+    /\ was_rand_generated_before now ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b')) (aead_usage "DS.comm_key")));
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key
+    \/ (was_rand_generated_before now ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key")));
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key
+    \/ (was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key")));
+
+  // use trace entry injectivity to proof occurence of send key event
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key
+    \/ (was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key"))
+    /\ (exists i. later_than now i /\ i > 2
+    /\ (exists b' srv' pk_a' clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_at (i-3) a (event_send_key a b' srv' pk_a' pk_b ck t clock_cnt'))));
+  assert(forall i b' srv' pk_a' clock_cnt'. (later_than now i /\ i > 2 /\ did_event_occur_at (i-3) a (event_send_key a b' srv' pk_a' pk_b ck t clock_cnt'))
+    ==> epred (i-3) a (event_send_key a b' srv' pk_a' pk_b ck t clock_cnt'));
+  assert(forall i b' srv' pk_a' clock_cnt'. (later_than now i /\ i > 2 /\ epred (i-3) a (event_send_key a b' srv' pk_a' pk_b ck t clock_cnt'))
+    ==> (did_event_occur_at t srv' (event_certify a b' srv' pk_a' pk_b t 0) \/ corrupt_id (i-3) (P srv')));
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key
+    \/ (was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key"))
+    /\ (exists i. later_than now i /\ i > 2
+    /\ (exists b' srv' pk_a' clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_at (i-3) a (event_send_key a b' srv' pk_a' pk_b ck t clock_cnt') /\ (did_event_occur_at t srv' (event_certify a b' srv' pk_a' pk_b t 0) \/ corrupt_id (i-3) (P srv')) /\ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0))))
+#pop-options
+
+#push-options "--z3rlimit 400"
 let trigger_event_accept_key (now:timestamp) (a b srv:principal) (pk_a pk_b ck:bytes)
   (t:timestamp) (clock_cnt:nat) (cert_a cert_b:msg ds_global_usage now public)
   (ev_comm_key:msg ds_global_usage now (readers [P b]))
   (ser_comm_key:msg ds_global_usage now (readers [P b]))
   (verk_srv:verify_key ds_global_usage now (readers [P srv]) "DS.sig_key") :
-  //(sk_b:private_dec_key ds_global_usage now (readers [P b]) "DS.pke_key")
   LCrypto unit (pki ds_preds)
   (requires (fun t0 -> now == trace_len t0 /\
     clock_cnt <= recv_msg_3_delay /\
+    a =!= b /\
     is_pub_enc_key now pk_b b /\
     parse_sigval_ cert_a == Success (CertA a pk_a t) /\
     parse_sigval_ cert_b == Success (CertB b pk_b t) /\
     parse_sigval_ ser_comm_key == Success (CommKey ck t) /\
-    (exists sv. parse_encval_comm_key_ ev_comm_key == Success (ser_comm_key, sv)) /\
-    //(can_flow now (readers [P srv]) public \/
-    //sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a /\
-    //sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b) /\
-    (corrupt_id now (P srv) \/ later_than now t /\
-    did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0)) /\
+    (exists sig_ck. parse_encval_comm_key_ ev_comm_key == Success (ser_comm_key, sig_ck)) /\
+    (can_flow now (readers [P srv]) public \/
+    sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a /\
+    sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b) /\
     (is_ver_key now pk_a a ==> (can_flow now (readers [P a]) public \/
     sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key)) /\
     (is_publishable ds_global_usage now ev_comm_key \/ pke_pred ds_usage_preds now "DS.pke_key" pk_b ev_comm_key)
   ))
   (ensures (fun t0 _ t1 -> trace_len t1 == trace_len t0 + 1 /\
-    did_event_occur_at now b (event_accept_key a b srv pk_a pk_b ck t clock_cnt))) =
+    did_event_occur_at now b (event_accept_key a b srv pk_a pk_b ck t clock_cnt) /\
+    (corrupt_id now (P srv) \/ corrupt_id now (P a) \/ is_publishable ds_global_usage now ev_comm_key \/
+    was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key")))) =
   let event = event_accept_key a b srv pk_a pk_b ck t clock_cnt in
-  (*publishable_readers_implies_corruption #now [P srv];
+
+  // publishable server id means that server is corrupted
+  publishable_readers_implies_corruption #now [P srv];
   assert(corrupt_id now (P srv) \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a);
   assert(corrupt_id now (P srv) \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b);
+
+  // use readers injectivity to infer that server triggered certify event (if honest)
   readers_is_injective srv;
   verification_key_label_lemma ds_global_usage now verk_srv (readers [P srv]);
   assert(get_signkey_label ds_key_usages verk_srv == readers [P srv]);
   assert(corrupt_id now (P srv)
     \/ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0));
-  assert(corrupt_id now (P srv) \/ later_than now t);*)
+
+  // certify event pred ensures that pk_a is initiator's verify key (if server is honest)
+  assert(corrupt_id now (P srv) \/ epred t srv (event_certify a b srv pk_a pk_b t 0));
+  assert(corrupt_id now (P srv) \/ t < now);
   assert(corrupt_id now (P srv) \/ is_ver_key t pk_a a);
-  assert(can_flow now (readers [P a]) public
+  verification_key_label_lemma ds_global_usage t pk_a (readers [P a]);
+  assert(corrupt_id now (P srv) \/ get_signkey_label ds_key_usages pk_a == readers [P a]);
+  is_verify_key_later t pk_a;
+  assert(corrupt_id now (P srv) \/ is_ver_key now pk_a a);
+  assert(corrupt_id now (P srv) \/ can_flow now (readers [P a]) public
     \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);
+
+  // publishable initiator id means that initiator is corrupted
   publishable_readers_implies_corruption #now [P a];
-  assert(corrupt_id now (P a)
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a)
     \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);
-  assert(corrupt_id now (P a)
-    \/ was_rand_generated_before now ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key"));
-  assert(corrupt_id now (P a)
-    \/ (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_before now a (event_send_key a b srv pk_a pk_b ck t clock_cnt')));
-  (trigger_event #ds_preds b event)
+
+  readers_is_injective a;
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists i. later_than now i /\ can_sign i "DS.sig_key" pk_a ser_comm_key));
+  assert(corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists i. later_than now i /\ (i > 2 /\
+    (exists b' srv' pk_b'. was_rand_generated_before i ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b')) (aead_usage "DS.comm_key") /\
+    (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_at (i-3) a (event_send_key a b' srv' pk_a pk_b' ck t clock_cnt'))))));
+
+  readers_is_injective b;
+  sk_label_lemma ds_global_usage now pk_b (readers [P b]);
+  assert(get_sk_label ds_key_usages pk_b == readers [P b]);
+  assert(is_publishable ds_global_usage now ev_comm_key
+    \/ pke_pred ds_usage_preds now "DS.pke_key" pk_b ev_comm_key);
+  assert(is_publishable ds_global_usage now ev_comm_key
+    \/ (exists i. later_than now i /\ can_pke_encrypt i "DS.pke_key" pk_b ev_comm_key));
+  assert(is_publishable ds_global_usage now ev_comm_key
+    \/ (exists i. later_than now i /\ (i > 2 /\
+      (exists a' b' srv' pk_a'. get_signkey_label ds_key_usages pk_a' == readers [P a'] /\
+      was_rand_generated_before i ck (join (readers [P a']) (get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
+      (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_at (i-3) a' (event_send_key a' b' srv' pk_a' pk_b ck t clock_cnt'))))));
+
+  trigger_event_accept_key_helper now a b srv pk_a pk_b ck t clock_cnt cert_a cert_b ev_comm_key ser_comm_key verk_srv;
+  encval_comm_key_publishable_implies_comm_key_publishable now ev_comm_key;
+
+  trigger_event #ds_preds b event
 
 let responder_recv_msg_3 c_in b srv msg3_idx =
   // receive and parse second message
@@ -309,6 +403,8 @@ let responder_recv_msg_3 c_in b srv msg3_idx =
         match (parse_sigval cert_a, parse_sigval cert_b) with
         | (Success (CertA a' pk_a t), Success (CertB b' pk_b t')) -> (
           if a <> a' || b <> b' then error "[r_recv_m3] initiator or responder from certificate does not match with actual initiator or responder"
+          // This is a reasonable assumption required to show key secrecy, otherwise no key exchange would be necessary
+          else if a = b then error "[r_recv_m3] initiator and responder are the same principal"
           else if t <> t' then error "[r_recv_m3] timestamps in initiator and responder certificates do not match"
           else
             // look up private key of responder
@@ -339,40 +435,16 @@ let responder_recv_msg_3 c_in b srv msg3_idx =
                           parse_sigval_lemma cert_b;
                           parse_sigval_lemma #now #(readers [P b]) ser_comm_key;
                           parse_encval_lemma ev_comm_key;
-                          assert(can_flow now (readers [P srv]) public
-                            \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_a);
-                          assert(can_flow now (readers [P srv]) public
-                            \/ sign_pred ds_usage_preds now "DS.sig_key" verk_srv cert_b);
-                          publishable_readers_implies_corruption #now [P srv];
-                          readers_is_injective srv;
-                          verification_key_label_lemma ds_global_usage now verk_srv (readers [P srv]);
-                          assert(get_signkey_label ds_key_usages verk_srv == readers [P srv]);
-                          assert(corrupt_id now (P srv) \/ later_than now t
-                            /\ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0));
-                          assert(corrupt_id now (P srv) \/ later_than now t
-                            /\ epred t srv (event_certify a b srv pk_a pk_b t 0));
-                          assert(corrupt_id now (P srv) \/ is_ver_key t pk_a a);
-                          readers_is_injective a;
-                          assert(corrupt_id now (P srv) \/ can_flow now (readers [P a]) public
-                            \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);
-                          publishable_readers_implies_corruption #now [P a];
-                          assert(is_publishable ds_global_usage now sk_b
-                            \/ is_private_dec_key ds_global_usage now sk_b (readers [P b]) "DS.pke_key");
-                          assert(is_publishable ds_global_usage now sk_b
-                            \/ is_publishable ds_global_usage now ev_comm_key
-                            \/ pke_pred ds_usage_preds now "DS.pke_key" pk_b ev_comm_key);
-                          publishable_readers_implies_corruption #now [P b];
                           let clock_cnt_event = clock_get c_out in
-                          let event = event_accept_key a b srv pk_a pk_b ck t clock_cnt_event in
-                          trigger_event #ds_preds b event;
+                          trigger_event_accept_key now a b srv pk_a pk_b ck t clock_cnt_event cert_a cert_b ev_comm_key ser_comm_key verk_srv;
 
                           // store responder session
                           let new_sess_idx = new_session_number #ds_preds b in
                           let st_r_rcvd_m3 = ResponderRecvedMsg3 a srv ck in
                           let now = global_timestamp () in
+                          rand_is_secret #ds_global_usage #now #(join (readers [P a]) (readers [P b])) #(aead_usage "DS.comm_key") ck;
                           let ser_st = serialize_session_st now b new_sess_idx 0 st_r_rcvd_m3 in
 
-                          admit();
                           new_session #ds_preds #now b new_sess_idx 0 ser_st;
 
                           (new_sess_idx, c_out)
