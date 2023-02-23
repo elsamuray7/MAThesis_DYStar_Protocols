@@ -95,3 +95,13 @@ val responder_comm_key_is_not_replay: i:nat ->
   (ensures (fun t0 _ t1 -> forall a b srv pk_a pk_b ck t clock_cnt.
     did_event_occur_at i b (event_accept_key a b srv pk_a pk_b ck t clock_cnt)
     ==> clock_cnt <= recv_msg_3_delay /\ (did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0) \/ corrupt_id i (P srv))))
+
+/// Mutual authentication based on certificates issued by the server.
+/// TODO: Is this enough?
+val mutual_authentication: i:nat -> j:nat ->
+  LCrypto unit (pki ds_preds)
+  (requires (fun t0 -> i < trace_len t0 /\ j < trace_len t0 /\ i < j))
+  (ensures (fun t0 _ t1 -> forall a b srv pk_a pk_b ck t clock_cnt_a clock_cnt_b.
+    did_event_occur_at i a (event_send_key a b srv pk_a pk_b ck t clock_cnt_a) /\
+    did_event_occur_at j b (event_accept_key a b srv pk_a pk_b ck t clock_cnt_b)
+    ==> t < i /\ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0) \/ corrupt_id i (P srv)))

@@ -71,3 +71,5 @@ let responder_comm_key_is_secret responder set_state_idx vv responder_state stat
   | _ -> ()
 
 let responder_comm_key_is_not_replay i = ()
+
+let mutual_authentication i j = ()
