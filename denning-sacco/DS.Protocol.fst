@@ -1,10 +1,6 @@
 module DS.Protocol
 
 
-(* Needs access to internal clock implementation *)
-friend DS.Clock
-
-
 let initiator_send_msg_1 a b srv =
   // trigger event 'initiate'
   let event = event_initiate a b srv in
@@ -42,7 +38,7 @@ let server_send_msg_2 srv msg1_idx =
 
       // initialize clock
       let t = global_timestamp () in
-      let c_new = clock_new t in
+      let c_new = clock_new () in
 
       // trigger event 'certify'
       let event = event_certify a b srv pk_a pk_b t (clock_get c_new) in
