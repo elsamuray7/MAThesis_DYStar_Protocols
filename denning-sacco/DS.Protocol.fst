@@ -1,10 +1,6 @@
 module DS.Protocol
 
 
-(* Needs access to internal clock implementation *)
-friend DS.Clock
-
-
 let initiator_send_msg_1 a b srv =
   // trigger event 'initiate'
   let event = event_initiate a b srv in
@@ -42,7 +38,7 @@ let server_send_msg_2 srv msg1_idx =
 
       // initialize clock
       let t = global_timestamp () in
-      let c_new = clock_new t in
+      let c_new = clock_new () in
 
       // trigger event 'certify'
       let event = event_certify a b srv pk_a pk_b t (clock_get c_new) in
@@ -260,7 +256,7 @@ let trigger_event_accept_key_helper (now:timestamp) (a b srv:principal) (pk_a pk
     parse_sigval_ cert_b == Success (CertB b pk_b t) /\
     parse_sigval_ ser_comm_key == Success (CommKey ck t) /\
     (exists sig_ck. parse_encval_comm_key_ ev_comm_key == Success (ser_comm_key, sig_ck)) /\
-    (corrupt_id now (P srv) \/ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0)) /\
+    (corrupt_id now (P srv) \/ t < now /\ did_event_occur_at t srv (event_certify a b srv pk_a pk_b t 0)) /\
     (corrupt_id now (P srv) \/ corrupt_id now (P a) \/
       (exists i. later_than now i /\ (i > 2 /\
       (exists b' srv' pk_b'. was_rand_generated_before i ck (join (readers [P a]) (get_sk_label ds_key_usages pk_b')) (aead_usage "DS.comm_key") /\
