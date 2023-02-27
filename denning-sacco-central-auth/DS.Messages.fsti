@@ -9,16 +9,19 @@ open DS.Helper
 module LC = LabeledCryptoAPI
 
 
+/// Authentication service defined as singleton
+let auth_srv:principal = "server"
+
 (* Events required to proof security properties *)
 
-let event_initiate (a b srv:principal) =
-  ("initiate",[string_to_bytes a;string_to_bytes b;string_to_bytes srv])
-let event_certify (a b srv:principal) (pk_a pk_b:bytes) (t:timestamp) (clock_cnt:nat) =
-  ("certify",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;pk_a;pk_b;nat_to_bytes 0 t;nat_to_bytes 0 clock_cnt])
-let event_send_key (a b srv:principal) (pk_a pk_b ck:bytes) (t:timestamp) (clock_cnt:nat) =
-  ("send_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;pk_a;pk_b;ck;nat_to_bytes 0 t;nat_to_bytes 0 clock_cnt])
-let event_accept_key (a b srv:principal) (pk_a pk_b ck:bytes) (t:timestamp) (clock_cnt:nat) =
-  ("accept_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;pk_a;pk_b;ck;nat_to_bytes 0 t;nat_to_bytes 0 clock_cnt])
+let event_initiate (a b:principal) =
+  ("initiate",[string_to_bytes a;string_to_bytes b])
+let event_certify (a b:principal) (pk_a pk_b:bytes) (t:timestamp) (clock_cnt:nat) =
+  ("certify",[string_to_bytes a;string_to_bytes b;pk_a;pk_b;nat_to_bytes 0 t;nat_to_bytes 0 clock_cnt])
+let event_send_key (a b:principal) (pk_a pk_b ck:bytes) (t:timestamp) (clock_cnt:nat) =
+  ("send_key",[string_to_bytes a;string_to_bytes b;pk_a;pk_b;ck;nat_to_bytes 0 t;nat_to_bytes 0 clock_cnt])
+let event_accept_key (a b:principal) (pk_a pk_b ck:bytes) (t:timestamp) (clock_cnt:nat) =
+  ("accept_key",[string_to_bytes a;string_to_bytes b;pk_a;pk_b;ck;nat_to_bytes 0 t;nat_to_bytes 0 clock_cnt])
 
 (* Expected message receive delays in the Denning-Sacco protocol model *)
 
@@ -50,27 +53,16 @@ let can_sign (i:nat) s k ssv =
   (match parse_sigval_ ssv with
   | Success (CertA a pk_a t) ->
     t < i /\
-    (exists b pk_b. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
+    (exists b pk_b. did_event_occur_at t p (event_certify a b pk_a pk_b t 0))
   | Success (CertB b pk_b t) ->
     t < i /\
-    (exists a pk_a. did_event_occur_at t p (event_certify a b p pk_a pk_b t 0))
+    (exists a pk_a. did_event_occur_at t p (event_certify a b pk_a pk_b t 0))
   | Success (CommKey ck t) ->
     i > 2 /\
-    (exists b srv pk_b. was_rand_generated_before i ck (join (readers [P p]) (LC.get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
-    (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_at (i-3) p (event_send_key p b srv k pk_b ck t clock_cnt)))
+    (exists b pk_b. was_rand_generated_before i ck (join (readers [P p]) (LC.get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\
+    (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_at (i-3) p (event_send_key p b k pk_b ck t clock_cnt)))
   | _ -> False)
-let can_pke_encrypt (i:nat) s pk sev =
-  match parse_encval_comm_key_ sev with
-  | Success (ser_ck, _) -> (
-    match parse_sigval_ ser_ck with
-    | Success (CommKey ck t) ->
-      i > 2 /\
-      (exists a b srv pk_a. LC.get_signkey_label ds_key_usages pk_a == readers [P a] /\
-      was_rand_generated_before i ck (join (readers [P a]) (LC.get_sk_label ds_key_usages pk)) (aead_usage "DS.comm_key") /\
-      (exists clock_cnt. clock_cnt <= recv_msg_2_delay /\ did_event_occur_at (i-3) a (event_send_key a b srv pk_a pk ck t clock_cnt)))
-    | _ -> False
-  )
-  | _ -> False
+let can_pke_encrypt (i:nat) s pk sev = True
 let can_mac i s k m = True
 
 let ds_usage_preds : LC.usage_preds = {
