@@ -15,6 +15,8 @@ let is_labeled i b l = LC.is_labeled M.ylm_global_usage i b l
 let is_lt_key i b p srv = LC.is_aead_key M.ylm_global_usage i b (readers [P p; P srv]) "YLM.lt_key"
 let is_comm_key i b srv p q = LC.is_aead_key M.ylm_global_usage i b (readers [P srv; P p; P q]) "YLM.comm_key"
 
+let lt_key i p srv = b:bytes{is_lt_key i b p srv}
+
 noeq type session_st =
   (* Auth server session for secret keys shared with principals *)
   | AuthServerSession: p:principal -> k_ps:bytes -> session_st
