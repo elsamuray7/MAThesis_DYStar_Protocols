@@ -63,3 +63,42 @@ let initiator_send_msg_1 a kas_idx b =
   new_session #ylm_preds #now a new_sess_idx 0 ser_st;
 
   (msg1_idx, new_sess_idx)
+
+let responder_send_msg_2 b kbs_idx msg1_idx =
+  // receive and parse first message
+  let (|_,a,ser_msg1|) = receive_i #ylm_preds msg1_idx b in
+
+  match parse_msg ser_msg1 with
+  | Success (Msg1 a' n_a) -> (
+    if a = a' then
+      // get responder long term key
+      let (|_,(PKeySession srv k_bs)|) = get_lt_key_session b kbs_idx in
+
+      // generate responder nonce
+      let (|_,n_b|) = rand_gen #ylm_preds (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b") in
+
+      // create and send second message
+      let ev2 = EncMsg2 a n_a n_b in
+      let now = global_timestamp () in
+      let ser_ev2 = serialize_encval now ev2 (get_label ylm_key_usages k_bs) in
+      let iv = string_to_bytes #ylm_global_usage #now "iv" in
+      let ad = string_to_bytes #ylm_global_usage #now "ev2" in
+      let c_ev2 = aead_enc #ylm_global_usage #now #(get_label ylm_key_usages k_bs) k_bs iv ser_ev2 ad in
+
+      let msg2 = Msg2 b c_ev2 in
+      let ser_msg2 = serialize_msg now msg2 in
+
+      let msg2_idx = send #ylm_preds #now b srv ser_msg2 in
+
+      // store responder session
+      let new_sess_idx = new_session_number #ylm_preds b in
+      let st_r_sent_m2 = ResponderSentMsg2 a srv n_b in
+      let now = global_timestamp () in
+      let ser_st = serialize_session_st now b new_sess_idx 0 st_r_sent_m2 in
+
+      new_session #ylm_preds #now b new_sess_idx 0 ser_st;
+
+      (msg2_idx, new_sess_idx)
+    else error "[r_send_m2] actual initiator does not match with initiator in first message"
+  )
+  | _ -> error "[r_send_m2] wrong message"
