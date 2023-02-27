@@ -32,6 +32,7 @@ val install_lt_key_at_auth_server:
 val initiator_send_msg_1:
   initiator:principal ->
   kas_idx:nat ->
+  responder:principal ->
   LCrypto (msg_idx:timestamp * sess_idx:nat) (pki ylm_preds)
   (requires (fun t0 -> True))
   (ensures (fun t0 (mi, si) t1 ->
