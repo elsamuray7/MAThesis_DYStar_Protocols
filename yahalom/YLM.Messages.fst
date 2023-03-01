@@ -1,6 +1,31 @@
 module YLM.Messages
 
 
+let parse_encval_ sev =
+  split sev `bind` (fun (tag_bytes, rest) ->
+  bytes_to_string tag_bytes `bind` (fun tag ->
+  match tag with
+  | "ev2" ->
+    split rest `bind` (fun (a_bytes, rest) ->
+    split rest `bind` (fun (n_a, n_b) ->
+    bytes_to_string a_bytes `bind` (fun a ->
+    Success (EncMsg2 a n_a n_b))))
+  | "ev3_i" ->
+    split rest `bind` (fun (b_bytes, rest) ->
+    split rest `bind` (fun (k_ab, rest) ->
+    split rest `bind` (fun (n_a, n_b) ->
+    bytes_to_string b_bytes `bind` (fun b ->
+    Success (EncMsg3_I b k_ab n_a n_b)))))
+  | "ev3_r" ->
+    split rest `bind` (fun (a_bytes, k_ab) ->
+    bytes_to_string a_bytes `bind` (fun a ->
+    Success (EncMsg3_R a k_ab)))
+  | "ev4" ->
+    let n_b = rest in
+    Success (EncMsg4 n_b)
+  | t -> Error ("[parse_encval] invalid tag: " ^ t)
+  ))
+
 let serialize_encval i ev l =
   match ev with
   | EncMsg2 a n_a n_b ->
@@ -43,6 +68,8 @@ let parse_encval #i #l sev =
     Success (EncMsg4 n_b)
   | t -> Error ("[parse_encval] invalid tag: " ^ t)
   ))
+
+let parse_encval_lemma sev = ()
 
 let parse_serialize_encval_lemma i ev l = ()
 

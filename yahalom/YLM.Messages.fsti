@@ -8,6 +8,30 @@ open CryptoLib
 module LC = LabeledCryptoAPI
 
 
+(* Events required to proof security properties *)
+
+let event_initiate (a b srv:principal) (n_a:bytes) =
+  ("initiate",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a])
+let event_req_key (a b srv:principal) (n_a n_b:bytes) =
+  ("req_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b])
+let event_send_key (a b srv:principal) (n_a n_b k_ab:bytes) =
+  ("send_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b;k_ab])
+let event_recv_key (a b srv:principal) (n_a n_b k_ab:bytes) =
+  ("recv_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b;k_ab])
+let event_fwd_key (a b srv:principal) (n_b k_ab:bytes) =
+  ("recv_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_b;k_ab])
+
+
+/// Fromat of encrypted message parts
+noeq type encval =
+  | EncMsg2: a:principal -> n_a:bytes -> n_b:bytes -> encval
+  | EncMsg3_I: b:principal -> k_ab:bytes -> n_a:bytes -> n_b:bytes -> encval
+  | EncMsg3_R: a:principal -> k_ab:bytes -> encval
+  | EncMsg4: n_b:bytes -> encval
+
+val parse_encval_: sev:bytes -> result encval
+
+
 let ylm_key_usages : LC.key_usages = LC.default_key_usages
 
 let can_pke_encrypt (i:nat) s pk m = True
@@ -40,13 +64,6 @@ let bytes_to_str #i #l b = LC.bytes_to_string #ylm_global_usage #i #l b
 let split #i #l b = LC.split #ylm_global_usage #i #l b
 
 
-/// Fromat of encrypted message parts
-noeq type encval =
-  | EncMsg2: a:principal -> n_a:bytes -> n_b:bytes -> encval
-  | EncMsg3_I: b:principal -> k_ab:bytes -> n_a:bytes -> n_b:bytes -> encval
-  | EncMsg3_R: a:principal -> k_ab:bytes -> encval
-  | EncMsg4: n_b:bytes -> encval
-
 let valid_encval (i:nat) (ev:encval) (l:label) =
   match ev with
   | EncMsg2 a n_a n_b -> is_msg i n_a l /\ is_msg i n_b l
@@ -62,10 +79,15 @@ val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
     | Error _ -> True
   }
 
+val parse_encval_lemma: #i:nat -> #l:label -> sev:(msg i l) ->
+  Lemma (parse_encval sev == parse_encval_ sev)
+
 val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label ->
   Lemma (requires (valid_encval i ev l))
-        (ensures (parse_encval (serialize_encval i ev l) == Success ev))
-        [SMTPat (parse_encval (serialize_encval i ev l))]
+        (ensures (parse_encval (serialize_encval i ev l) == Success ev /\
+                  parse_encval_ (serialize_encval i ev l) == Success ev))
+        [SMTPat (parse_encval (serialize_encval i ev l));
+         SMTPat (parse_encval_ (serialize_encval i ev l))]
 
 
 noeq type message (i:nat) =
@@ -90,4 +112,3 @@ val parse_msg: #i:nat -> sm:(msg i public) -> r:(result (message i))
 val parse_serialize_msg_lemma: i:nat -> m:(message i) ->
   Lemma (requires (valid_message i m))
         (ensures (parse_msg (serialize_msg i m) == Success m))
-
