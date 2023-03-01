@@ -47,6 +47,10 @@ let initiator_send_msg_1 a kas_idx b =
   // generate initiator nonce
   let (|_,n_a|) = rand_gen #ylm_preds public (nonce_usage "YLM.nonce_a") in
 
+  // trigger event 'initiate'
+  let event = event_initiate a b srv n_a in
+  trigger_event #ylm_preds a event;
+
   // create and send first message
   let now = global_timestamp () in
   let msg1 = Msg1 a n_a in
@@ -77,12 +81,17 @@ let responder_send_msg_2 b kbs_idx msg1_idx =
       // generate responder nonce
       let (|_,n_b|) = rand_gen #ylm_preds (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b") in
 
+      // trigger event 'req key'
+      let event = event_req_key a b srv n_a n_b in
+      trigger_event #ylm_preds b event;
+
       // create and send second message
       let ev2 = EncMsg2 a n_a n_b in
       let now = global_timestamp () in
       let ser_ev2 = serialize_encval now ev2 (get_label ylm_key_usages k_bs) in
       let iv = string_to_bytes #ylm_global_usage #now "iv" in
       let ad = string_to_bytes #ylm_global_usage #now "ev2" in
+      parse_serialize_encval_lemma now ev2 (get_label ylm_key_usages k_bs);
       let c_ev2 = aead_enc #ylm_global_usage #now #(get_label ylm_key_usages k_bs) k_bs iv ser_ev2 ad in
 
       let msg2 = Msg2 b c_ev2 in

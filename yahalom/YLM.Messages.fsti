@@ -35,7 +35,12 @@ val parse_encval_: sev:bytes -> result encval
 let ylm_key_usages : LC.key_usages = LC.default_key_usages
 
 let can_pke_encrypt (i:nat) s pk m = True
-let can_aead_encrypt i s k m ad = True
+let can_aead_encrypt i s k sev ad =
+  exists p srv. LC.get_label ylm_key_usages k == readers [P p; P srv] /\
+  (match parse_encval_ sev with
+  | Success (EncMsg2 a n_a n_b) ->
+    did_event_occur_before i p (event_req_key a p srv n_a n_b)
+  | _ -> True)
 let can_sign i s k m = True
 let can_mac i s k m = True
 
