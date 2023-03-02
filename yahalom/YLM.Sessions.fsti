@@ -80,7 +80,7 @@ let epred idx s e =
       LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv))
     | _ -> False
   )
-  | _ -> True
+  | _ -> False
 
 let ylm_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (version:nat) (state:bytes) =
     M.is_msg trace_idx state (readers [V p state_session_idx version]) /\
