@@ -10,6 +10,7 @@ open YLM.Sessions
 open LabeledCryptoAPI
 open LabeledRuntimeAPI
 open LabeledPKI
+open SecurityLemmas
 
 
 val new_lt_key_session:

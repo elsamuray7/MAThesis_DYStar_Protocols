@@ -3,6 +3,7 @@ module YLM.Sessions
 
 open SecrecyLabels
 open CryptoLib
+open GlobalRuntimeLib
 
 module M = YLM.Messages
 module LC = LabeledCryptoAPI
@@ -58,7 +59,19 @@ val parse_serialize_session_st_lemma: i:nat -> p:principal -> si:nat -> vi:nat -
 	  [SMTPat (parse_session_st (serialize_session_st i p si vi st))]
 
 
-let epred idx s e = True
+let epred idx s e =
+  match e with
+  | ("initiate",[a_bytes;b_bytes;srv_bytes;n_a]) ->
+    bytes_to_string a_bytes == Success s
+  | ("req_key",[a_bytes;b_bytes;srv_bytes;n_a;n_b]) -> (
+    match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes) with
+    | (Success a, Success b, Success srv) ->
+      b = s /\
+      M.is_msg idx n_a public /\
+      was_rand_generated_before idx n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b")
+    | _ -> False
+  )
+  | _ -> True
 
 let ylm_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (version:nat) (state:bytes) =
     M.is_msg trace_idx state (readers [V p state_session_idx version]) /\

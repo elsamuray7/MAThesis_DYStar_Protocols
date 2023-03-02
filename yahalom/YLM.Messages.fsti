@@ -86,6 +86,7 @@ val parse_encval: #i:nat -> #l:label -> sev:(msg i l) -> r:(result encval)
 
 val parse_encval_lemma: #i:nat -> #l:label -> sev:(msg i l) ->
   Lemma (parse_encval sev == parse_encval_ sev)
+        [SMTPat (parse_encval sev)]
 
 val parse_serialize_encval_lemma: i:nat -> ev:encval -> l:label ->
   Lemma (requires (valid_encval i ev l))
