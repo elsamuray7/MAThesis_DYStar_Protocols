@@ -47,9 +47,7 @@ let can_aead_encrypt i s k sev ad =
     exists b srv. LC.get_label ylm_key_usages k == readers [P b; P srv] /\
     (exists n_a n_b. did_event_occur_before i srv (event_send_key a b srv n_a n_b k_ab))
   | Success (EncMsg4 n_b) ->
-    //exists srv a b. LC.get_label ylm_key_usages k == readers [P srv; P a; P b] /\
-    //(exists n_a. did_event_occur_before i a (event_fwd_key a b srv n_a n_b k))
-    True
+    exists a b srv n_a. did_event_occur_before i a (event_fwd_key a b srv n_a n_b k)
   | _ -> False
 let can_sign i s k m = True
 let can_mac i s k m = True

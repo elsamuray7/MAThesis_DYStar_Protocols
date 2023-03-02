@@ -84,7 +84,8 @@ let epred idx s e =
     match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes) with
     | (Success a, Success b, Success srv) ->
       a = s /\
-      True
+      (did_event_occur_before idx srv (M.event_send_key a b srv n_a n_b k_ab) \/
+      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P srv))
     | _ -> False
   )
   | _ -> False

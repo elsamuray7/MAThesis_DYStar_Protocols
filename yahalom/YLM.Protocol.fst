@@ -237,8 +237,14 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
         | Success ser_ev_a -> (
           match parse_encval ser_ev_a with
           | Success (EncMsg3_I b' k_ab n_a' n_b) -> (
-            if b = b' && n_a = n_a' then
+            if b = b' && n_a = n_a' then (
               // trigger event 'fwd key'
+              assert(is_publishable ylm_global_usage now k_as \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_as ser_ev_a ad);
+              readers_is_injective_2 a srv;
+              assert(is_publishable ylm_global_usage now k_as \/ did_event_occur_before now srv (event_send_key a b srv n_a n_b k_ab));
+              includes_corrupt_2_lemma now (P a) (P srv);
+              publishable_readers_implies_corruption #now [P a; P srv];
+              assert(corrupt_id now (P a) \/ corrupt_id now (P srv) \/ did_event_occur_before now srv (event_send_key a b srv n_a n_b k_ab));
               let prev = now in
               let event = event_fwd_key a b srv n_a n_b k_ab in
               trigger_event #ylm_preds a event;
@@ -246,12 +252,10 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
               // create and send fourth message
               let ev4 = EncMsg4 n_b in
               let now = global_timestamp () in
-              assert(is_publishable ylm_global_usage prev k_as \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
               aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
               assert(is_publishable ylm_global_usage prev ser_ev_a \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
               splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
               assert(is_publishable ylm_global_usage prev n_b \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
-              readers_is_injective_2 a srv;
               assert(is_publishable ylm_global_usage prev n_b \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
               assert(is_publishable ylm_global_usage prev n_b
                 \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key")
@@ -278,10 +282,6 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
               // update initiator session
               let st_i_sent_m4 = InitiatorSentMsg4 b srv k_ab in
               let now = global_timestamp () in
-              assert(is_publishable ylm_global_usage prev k_as \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
-              includes_corrupt_2_lemma prev (P a) (P srv);
-              publishable_readers_implies_corruption #now [P a; P srv];
-              assert(corrupt_id prev (P a) \/ corrupt_id prev (P srv) \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
               assert(corrupt_id prev (P a) \/ corrupt_id prev (P srv)
                 \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
               includes_can_flow_lemma now [P srv; P a; P b] [P a];
@@ -290,7 +290,7 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
               update_session #ylm_preds #now a a_si a_vi ser_st;
 
               msg4_idx
-            else error "[i_send_m4] responder or nonce mismatch in initiator encval"
+            ) else error "[i_send_m4] responder or nonce mismatch in initiator encval"
           )
           | _ -> error "[i_send_m4] wrong initiator encval"
         )
