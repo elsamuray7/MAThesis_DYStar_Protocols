@@ -40,6 +40,10 @@ let can_aead_encrypt i s k sev ad =
   (match parse_encval_ sev with
   | Success (EncMsg2 a n_a n_b) ->
     did_event_occur_before i p (event_req_key a p srv n_a n_b)
+  | Success (EncMsg3_I b k_ab n_a n_b) ->
+    did_event_occur_before i srv (event_send_key p b srv n_a n_b k_ab)
+  | Success (EncMsg3_R a k_ab) ->
+    exists n_a n_b. did_event_occur_before i srv (event_send_key a p srv n_a n_b k_ab)
   | _ -> True)
 let can_sign i s k m = True
 let can_mac i s k m = True

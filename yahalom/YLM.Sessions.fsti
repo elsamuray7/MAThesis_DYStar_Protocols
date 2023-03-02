@@ -71,6 +71,15 @@ let epred idx s e =
       was_rand_generated_before idx n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b")
     | _ -> False
   )
+  | ("send_key",[a_bytes;b_bytes;srv_bytes;n_a;n_b;k_ab]) -> (
+    match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes) with
+    | (Success a, Success b, Success srv) ->
+      srv = s /\
+      was_rand_generated_before idx k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key") /\
+      (did_event_occur_before idx b (M.event_req_key a b srv n_a n_b) \/
+      LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv))
+    | _ -> False
+  )
   | _ -> True
 
 let ylm_session_st_inv (trace_idx:nat) (p:principal) (state_session_idx:nat) (version:nat) (state:bytes) =

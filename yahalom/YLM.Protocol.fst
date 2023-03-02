@@ -154,6 +154,12 @@ let server_send_msg_3 srv msg2_idx =
           let (|_,k_ab|) = rand_gen #ylm_preds (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key") in
 
           // trigger event 'send key'
+          assert(is_publishable ylm_global_usage now k_bs \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_bs ser_ev_b ad);
+          assert(can_flow now (readers [P b; P srv]) public \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_bs ser_ev_b ad);
+          includes_corrupt_2_lemma now (P b) (P srv);
+          publishable_readers_implies_corruption #now [P b; P srv];
+          readers_is_injective_2 b srv;
+          assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ did_event_occur_before now b (event_req_key a b srv n_a n_b));
           let prev = now in
           let event = event_send_key a b srv n_a n_b k_ab in
           trigger_event #ylm_preds srv event;
@@ -161,29 +167,19 @@ let server_send_msg_3 srv msg2_idx =
           // create and send third message
           let ev3_i = EncMsg3_I b k_ab n_a n_b in
           let now = global_timestamp () in
-          assert(is_publishable ylm_global_usage prev k_bs \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_bs ser_ev_b ad);
           aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
           assert(is_publishable ylm_global_usage prev ser_ev_b \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_bs ser_ev_b ad);
           splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
           assert(is_publishable ylm_global_usage prev n_a /\ is_publishable ylm_global_usage prev n_b
             \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_bs ser_ev_b ad);
-          readers_is_injective_2 b srv;
           assert(is_publishable ylm_global_usage prev n_a /\ is_publishable ylm_global_usage prev n_b
             \/ did_event_occur_before prev b (event_req_key a b srv n_a n_b));
-          assert(is_publishable ylm_global_usage prev n_a /\ is_publishable ylm_global_usage prev n_b
-            \/ (exists i. i < prev /\ is_msg ylm_global_usage i n_a public
-            /\ was_rand_generated_before i n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b")));
           can_flow_later_forall cpred (get_label ylm_key_usages n_a) public;
           rand_is_secret #ylm_global_usage #now #(readers [P b; P a; P srv]) #(nonce_usage "YLM.nonce_b") n_b;
-          assert(is_publishable ylm_global_usage now n_a /\ is_publishable ylm_global_usage now n_b
-            \/ (exists i. later_than now i /\ is_valid ylm_global_usage i n_a /\ can_flow i (get_label ylm_key_usages n_a) public)
-            /\ is_secret ylm_global_usage now n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b"));
           assert(is_msg ylm_global_usage now n_a public /\ is_publishable ylm_global_usage now n_b \/ is_secret ylm_global_usage now n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b"));
           flows_to_public_can_flow now (get_label ylm_key_usages n_a) (get_label ylm_key_usages k_as);
           flows_to_public_can_flow now (get_label ylm_key_usages n_b) (get_label ylm_key_usages k_as);
           includes_can_flow_lemma now [P b; P a; P srv] [P a; P srv];
-          assert(is_msg ylm_global_usage now n_a (get_label ylm_key_usages k_as));
-          assert(is_msg ylm_global_usage now n_b (get_label ylm_key_usages k_as));
           let ser_ev3_i = serialize_encval now ev3_i (get_label ylm_key_usages k_as) in
           let ad = string_to_bytes #ylm_global_usage #now "ev3_i" in
           parse_serialize_encval_lemma now ev3_i (get_label ylm_key_usages k_as);
