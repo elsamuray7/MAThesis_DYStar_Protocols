@@ -160,6 +160,13 @@ let server_send_msg_3 srv msg2_idx =
           publishable_readers_implies_corruption #now [P b; P srv];
           readers_is_injective_2 b srv;
           assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ did_event_occur_before now b (event_req_key a b srv n_a n_b));
+          aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
+          assert(is_publishable ylm_global_usage now ser_ev_b \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_bs ser_ev_b ad);
+          splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
+          assert(is_publishable ylm_global_usage now n_a /\ is_publishable ylm_global_usage now n_b
+            \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_bs ser_ev_b ad);
+          assert(is_publishable ylm_global_usage now n_a /\ is_publishable ylm_global_usage now n_b
+            \/ did_event_occur_before now b (event_req_key a b srv n_a n_b));
           let prev = now in
           let event = event_send_key a b srv n_a n_b k_ab in
           trigger_event #ylm_preds srv event;
@@ -167,13 +174,6 @@ let server_send_msg_3 srv msg2_idx =
           // create and send third message
           let ev3_i = EncMsg3_I b k_ab n_a n_b in
           let now = global_timestamp () in
-          aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
-          assert(is_publishable ylm_global_usage prev ser_ev_b \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_bs ser_ev_b ad);
-          splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
-          assert(is_publishable ylm_global_usage prev n_a /\ is_publishable ylm_global_usage prev n_b
-            \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_bs ser_ev_b ad);
-          assert(is_publishable ylm_global_usage prev n_a /\ is_publishable ylm_global_usage prev n_b
-            \/ did_event_occur_before prev b (event_req_key a b srv n_a n_b));
           can_flow_later_forall cpred (get_label ylm_key_usages n_a) public;
           rand_is_secret #ylm_global_usage #now #(readers [P b; P a; P srv]) #(nonce_usage "YLM.nonce_b") n_b;
           assert(is_msg ylm_global_usage now n_a public /\ is_publishable ylm_global_usage now n_b \/ is_secret ylm_global_usage now n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b"));
@@ -213,4 +213,91 @@ let server_send_msg_3 srv msg2_idx =
     else error "[srv_send_m3] actual responder does not match with responder in second message"
   )
   | _ -> error "[srv_send_m3] wrong message"
+
+let initiator_send_msg_4 a kas_idx msg3_idx a_si =
+  // get initiator session
+  let now = global_timestamp () in
+  let (|a_vi,ser_st|) = get_session #ylm_preds #now a a_si in
+
+  match parse_session_st ser_st with
+  | Success (InitiatorSentMsg1 b n_a) -> (
+    // receive and parse third message
+    let (|_,srv,ser_msg3|) = receive_i #ylm_preds msg3_idx a in
+
+    match parse_msg ser_msg3 with
+    | Success (Msg3 c_ev_a c_ev_b) -> (
+      // get initiator long term key
+      let (|_,(PKeySession srv' k_as)|) = get_lt_key_session a kas_idx in
+
+      if srv = srv' then
+        // decrypt part of third message encrypted by server for initiator
+        let iv = string_to_bytes #ylm_global_usage #now "iv" in
+        let ad = string_to_bytes #ylm_global_usage #now "ev3_i" in
+        match aead_dec #ylm_global_usage #now #(get_label ylm_key_usages k_as) k_as iv c_ev_a ad with
+        | Success ser_ev_a -> (
+          match parse_encval ser_ev_a with
+          | Success (EncMsg3_I b' k_ab n_a' n_b) -> (
+            if b = b' && n_a = n_a' then
+              // trigger event 'fwd key'
+              let prev = now in
+              let event = event_fwd_key a b srv n_a n_b k_ab in
+              trigger_event #ylm_preds a event;
+
+              // create and send fourth message
+              let ev4 = EncMsg4 n_b in
+              let now = global_timestamp () in
+              assert(is_publishable ylm_global_usage prev k_as \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
+              aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
+              assert(is_publishable ylm_global_usage prev ser_ev_a \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
+              splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
+              assert(is_publishable ylm_global_usage prev n_b \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
+              readers_is_injective_2 a srv;
+              assert(is_publishable ylm_global_usage prev n_b \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
+              assert(is_publishable ylm_global_usage prev n_b
+                \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key")
+                /\ did_event_occur_before prev b (event_req_key a b srv n_a n_b));
+              can_flow_later_forall cpred (get_label ylm_key_usages n_b) public;
+              rand_is_secret #ylm_global_usage #now #(readers [P srv; P a; P b]) #(aead_usage "YLM.comm_key") k_ab;
+              rand_is_secret #ylm_global_usage #now #(readers [P b; P a; P srv]) #(nonce_usage "YLM.nonce_b") n_b;
+              assert(is_msg ylm_global_usage now n_b public
+                \/ is_secret ylm_global_usage now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key")
+                /\ is_secret ylm_global_usage now n_b (readers [P b; P a; P srv]) (nonce_usage "YLM.nonce_b"));
+              flows_to_public_can_flow now (get_label ylm_key_usages n_b) (get_label ylm_key_usages k_ab);
+              includes_can_flow_lemma now [P b; P a; P srv] [P srv; P a; P b];
+              let ser_ev4 = serialize_encval now ev4 (get_label ylm_key_usages k_ab) in
+              let ad = string_to_bytes #ylm_global_usage #now "ev4" in
+              parse_serialize_encval_lemma now ev4 (get_label ylm_key_usages k_ab);
+              let c_ev4 = aead_enc #ylm_global_usage #now #(get_label ylm_key_usages k_ab) k_ab iv ser_ev4 ad in
+
+              let c_ev_b:msg ylm_global_usage now public = c_ev_b in
+              let msg4 = Msg4 c_ev_b c_ev4 in
+              let ser_msg4 = serialize_msg now msg4 in
+
+              let msg4_idx = send #ylm_preds #now a b ser_msg4 in
+
+              // update initiator session
+              let st_i_sent_m4 = InitiatorSentMsg4 b srv k_ab in
+              let now = global_timestamp () in
+              assert(is_publishable ylm_global_usage prev k_as \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
+              includes_corrupt_2_lemma prev (P a) (P srv);
+              publishable_readers_implies_corruption #now [P a; P srv];
+              assert(corrupt_id prev (P a) \/ corrupt_id prev (P srv) \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
+              assert(corrupt_id prev (P a) \/ corrupt_id prev (P srv)
+                \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
+              includes_can_flow_lemma now [P srv; P a; P b] [P a];
+              let ser_st = serialize_session_st now a a_si a_vi st_i_sent_m4 in
+
+              update_session #ylm_preds #now a a_si a_vi ser_st;
+
+              msg4_idx
+            else error "[i_send_m4] responder or nonce mismatch in initiator encval"
+          )
+          | _ -> error "[i_send_m4] wrong initiator encval"
+        )
+        | Error e -> error ("[i_send_m4] " ^ e)
+      else error "[i_send_m4] actual server does not match with server of long term key session"
+    )
+    | _ -> error "[i_send_m4] wrong message"
+  )
+  | _ -> error "[i_send_m4] wrong session"
 #pop-options

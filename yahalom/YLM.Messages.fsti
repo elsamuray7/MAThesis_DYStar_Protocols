@@ -16,9 +16,9 @@ let event_req_key (a b srv:principal) (n_a n_b:bytes) =
   ("req_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b])
 let event_send_key (a b srv:principal) (n_a n_b k_ab:bytes) =
   ("send_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b;k_ab])
-let event_recv_key (a b srv:principal) (n_a n_b k_ab:bytes) =
-  ("recv_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b;k_ab])
-let event_fwd_key (a b srv:principal) (n_b k_ab:bytes) =
+let event_fwd_key (a b srv:principal) (n_a n_b k_ab:bytes) =
+  ("fwd_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_a;n_b;k_ab])
+let event_recv_key (a b srv:principal) (n_b k_ab:bytes) =
   ("recv_key",[string_to_bytes a;string_to_bytes b;string_to_bytes srv;n_b;k_ab])
 
 
@@ -36,15 +36,21 @@ let ylm_key_usages : LC.key_usages = LC.default_key_usages
 
 let can_pke_encrypt (i:nat) s pk m = True
 let can_aead_encrypt i s k sev ad =
-  exists p srv. LC.get_label ylm_key_usages k == readers [P p; P srv] /\
-  (match parse_encval_ sev with
+  match parse_encval_ sev with
   | Success (EncMsg2 a n_a n_b) ->
-    did_event_occur_before i p (event_req_key a p srv n_a n_b)
+    exists b srv. LC.get_label ylm_key_usages k == readers [P b; P srv] /\
+    did_event_occur_before i b (event_req_key a b srv n_a n_b)
   | Success (EncMsg3_I b k_ab n_a n_b) ->
-    did_event_occur_before i srv (event_send_key p b srv n_a n_b k_ab)
+    exists a srv. LC.get_label ylm_key_usages k == readers [P a; P srv] /\
+    did_event_occur_before i srv (event_send_key a b srv n_a n_b k_ab)
   | Success (EncMsg3_R a k_ab) ->
-    exists n_a n_b. did_event_occur_before i srv (event_send_key a p srv n_a n_b k_ab)
-  | _ -> False)
+    exists b srv. LC.get_label ylm_key_usages k == readers [P b; P srv] /\
+    (exists n_a n_b. did_event_occur_before i srv (event_send_key a b srv n_a n_b k_ab))
+  | Success (EncMsg4 n_b) ->
+    //exists srv a b. LC.get_label ylm_key_usages k == readers [P srv; P a; P b] /\
+    //(exists n_a. did_event_occur_before i a (event_fwd_key a b srv n_a n_b k))
+    True
+  | _ -> False
 let can_sign i s k m = True
 let can_mac i s k m = True
 
