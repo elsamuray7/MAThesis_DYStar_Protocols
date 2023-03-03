@@ -30,6 +30,12 @@ let benign_attacker () =
   let ((|t_kbs,k_bs|), kbs_idx) = new_lt_key_session b srv in
   install_lt_key_at_auth_server #t_kas srv a k_as;
   install_lt_key_at_auth_server #t_kbs srv b k_bs;
+
+  let (msg1_idx, a_sess_idx) = initiator_send_msg_1 a kas_idx b in
+  let (msg2_idx, b_sess_idx) = responder_send_msg_2 b kbs_idx msg1_idx in
+  let (msg3_idx, srv_sess_idx) = server_send_msg_3 srv msg2_idx in
+  let msg4_idx = initiator_send_msg_4 a kas_idx msg3_idx a_sess_idx in
+  responder_recv_msg_4 b kbs_idx msg4_idx b_sess_idx;
   ()
 
 let benign () : LCrypto unit (pki ylm_preds)
