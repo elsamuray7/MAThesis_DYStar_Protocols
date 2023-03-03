@@ -300,7 +300,9 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
     | _ -> error "[i_send_m4] wrong message"
   )
   | _ -> error "[i_send_m4] wrong session"
+#pop-options
 
+#push-options "--z3rlimit 200 --max_fuel 2 --max_ifuel 1"
 let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
   // get responder state
   let now = global_timestamp () in
@@ -342,8 +344,21 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
               | Success ser_ev4_b -> (
                 match parse_encval ser_ev4_b with
                 | Success (EncMsg4 n_b') -> (
-                  if n_b = n_b' then
+                  if n_b = n_b' then (
                     // trigger event 'recv key'
+                    includes_corrupt_2_lemma now (P b) (P srv);
+                    publishable_readers_implies_corruption #now [P b; P srv];
+                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
+                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv)
+                      \/ was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
+                    assert(is_publishable ylm_global_usage now k_ab \/ aead_pred ylm_usage_preds now "YLM.comm_key" k_ab ser_ev4_b ad);
+                    includes_corrupt_3_lemma cpred now (P srv) (P a) (P b);
+                    publishable_readers_implies_corruption #now [P srv; P a; P b];
+                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+                      \/ aead_pred ylm_usage_preds now "YLM.comm_key" k_ab ser_ev4_b ad);
+                    assert(n_b = n_b' ==> (EncMsg4 n_b) == (EncMsg4 n_b'));
+                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+                      \/ (exists a' b' srv' n_a'. did_event_occur_before now a' (event_fwd_key a' b' srv' n_a' n_b k_ab)));
                     let prev = now in
                     let event = event_recv_key a b srv n_b k_ab in
                     trigger_event #ylm_preds b event;
@@ -351,11 +366,6 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
                     // update responder session
                     let st_r_rcvd_m4 = ResponderRecvedMsg4 a srv k_ab in
                     let now = global_timestamp () in
-                    includes_corrupt_2_lemma prev (P b) (P srv);
-                    publishable_readers_implies_corruption #prev [P b; P srv];
-                    assert(corrupt_id prev (P b) \/ corrupt_id prev (P srv) \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
-                    assert(corrupt_id prev (P b) \/ corrupt_id prev (P srv)
-                      \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
                     includes_can_flow_lemma prev [P b; P srv] [P b];
                     assert(later_than now prev);
                     let ser_st = serialize_session_st now b b_si b_vi st_r_rcvd_m4 in
@@ -363,7 +373,7 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
                     update_session #ylm_preds #now b b_si b_vi ser_st;
 
                     ()
-                  else error "[r_recv_m4] nonce mismatch in responder encval"
+                  ) else error "[r_recv_m4] nonce mismatch in responder encval"
                 )
                 | _ -> error "[r_recv_m4] wrong responder encval from initiator"
               )
