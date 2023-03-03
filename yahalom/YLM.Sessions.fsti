@@ -43,7 +43,7 @@ let valid_session (i:nat) (p:principal) (si vi:nat) (st:session_st) =
     (is_labeled i k_ab (readers [P srv; P p; P b]) \/ LC.corrupt_id i (P srv) \/ LC.corrupt_id i (P p))
   | ResponderRecvedMsg4 a srv k_ab ->
     M.is_msg i k_ab (readers [P p]) /\
-    (is_labeled i k_ab (readers [P srv; P a; P p]) \/ LC.corrupt_id i (P srv) \/ LC.corrupt_id i (P a) \/ LC.corrupt_id i (P p))
+    (is_labeled i k_ab (readers [P srv; P a; P p]) \/ LC.corrupt_id i (P srv) \/ LC.corrupt_id i (P p))
 
 let valid_session_later (i j:timestamp) (p:principal) (si vi:nat) (st:session_st) :
   Lemma (ensures (valid_session i p si vi st /\ later_than j i ==> valid_session j p si vi st))
@@ -86,6 +86,13 @@ let epred idx s e =
       a = s /\
       (did_event_occur_before idx srv (M.event_send_key a b srv n_a n_b k_ab) \/
       LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P srv))
+    | _ -> False
+  )
+  | ("recv_key",[a_bytes;b_bytes;srv_bytes;n_b;k_ab]) -> (
+    match (bytes_to_string a_bytes, bytes_to_string b_bytes, bytes_to_string srv_bytes) with
+    | (Success a, Success b, Success srv) ->
+      b = s /\
+      True
     | _ -> False
   )
   | _ -> False

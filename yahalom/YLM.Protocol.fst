@@ -300,4 +300,82 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
     | _ -> error "[i_send_m4] wrong message"
   )
   | _ -> error "[i_send_m4] wrong session"
+
+let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
+  // get responder state
+  let now = global_timestamp () in
+  let (|b_vi,ser_st|) = get_session #ylm_preds #now b b_si in
+
+  match parse_session_st ser_st with
+  | Success (ResponderSentMsg2 a srv n_b) -> (
+    // receive and parse fourth message
+    let (|_,a',ser_msg4|) = receive_i #ylm_preds msg4_idx b in
+
+    if a = a' then
+      match parse_msg ser_msg4 with
+      | Success (Msg4 c_ev3_b c_ev4_b) -> (
+        // get responder long term key
+        let (|_,(PKeySession srv k_bs)|) = get_lt_key_session b kbs_idx in
+
+        // decrypt part of fourth message encrypted by server for responder
+        let iv = string_to_bytes #ylm_global_usage #now "iv" in
+        let ad = string_to_bytes #ylm_global_usage #now "ev3_r" in
+        match aead_dec #ylm_global_usage #now #(get_label ylm_key_usages k_bs) k_bs iv c_ev3_b ad with
+        | Success ser_ev3_b -> (
+          match parse_encval ser_ev3_b with
+          | Success (EncMsg3_R a'' k_ab) -> (
+            if a = a'' then
+              // decrypt part of fourth message encrypted with communication key by initiator
+              let ad = string_to_bytes #ylm_global_usage #now "ev4" in
+              assert(is_publishable ylm_global_usage now k_bs \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_bs ser_ev3_b ad);
+              readers_is_injective_2 b srv;
+              assert(a = a'' ==> (EncMsg3_R a k_ab) == (EncMsg3_R a'' k_ab));
+              assert(is_publishable ylm_global_usage now k_bs \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
+              aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
+              assert(is_publishable ylm_global_usage now ser_ev3_b \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
+              splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
+              assert(is_publishable ylm_global_usage now k_ab \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
+              assert(is_publishable ylm_global_usage now k_ab
+                \/ was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
+              rand_is_secret #ylm_global_usage #now #(readers [P srv; P a; P b]) #(aead_usage "YLM.comm_key") k_ab;
+              match aead_dec #ylm_global_usage #now #(get_label ylm_key_usages k_ab) k_ab iv c_ev4_b ad with
+              | Success ser_ev4_b -> (
+                match parse_encval ser_ev4_b with
+                | Success (EncMsg4 n_b') -> (
+                  if n_b = n_b' then
+                    // trigger event 'recv key'
+                    let prev = now in
+                    let event = event_recv_key a b srv n_b k_ab in
+                    trigger_event #ylm_preds b event;
+
+                    // update responder session
+                    let st_r_rcvd_m4 = ResponderRecvedMsg4 a srv k_ab in
+                    let now = global_timestamp () in
+                    includes_corrupt_2_lemma prev (P b) (P srv);
+                    publishable_readers_implies_corruption #prev [P b; P srv];
+                    assert(corrupt_id prev (P b) \/ corrupt_id prev (P srv) \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
+                    assert(corrupt_id prev (P b) \/ corrupt_id prev (P srv)
+                      \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
+                    includes_can_flow_lemma prev [P b; P srv] [P b];
+                    assert(later_than now prev);
+                    let ser_st = serialize_session_st now b b_si b_vi st_r_rcvd_m4 in
+
+                    update_session #ylm_preds #now b b_si b_vi ser_st;
+
+                    ()
+                  else error "[r_recv_m4] nonce mismatch in responder encval"
+                )
+                | _ -> error "[r_recv_m4] wrong responder encval from initiator"
+              )
+              | Error e -> error ("[r_recv_m4] decrypt of initiator part failed: " ^ e)
+            else error "[r_recv_m4] initiator mismatch in responder encval"
+          )
+          | _ -> error "[r_recv_m4] wrong responder encval from server"
+        )
+        | Error e -> error ("[r_recv_m4] decrypt of server part failed: " ^ e)
+      )
+      | _ -> error "[r_recv_m4] wrong message"
+    else error "[r_recv_m4] actual initiator does not match with initiator stored in responder session"
+  )
+  | _ -> error "[r_recv_m4] wrong session"
 #pop-options
