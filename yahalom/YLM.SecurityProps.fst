@@ -102,3 +102,5 @@ let responder_comm_key_is_secret responder set_state_idx vv resp_state state_ses
     | _ -> ()
   )
   | _ -> ()
+
+let responder_authentication i = ()

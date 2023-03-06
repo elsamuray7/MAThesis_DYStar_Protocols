@@ -51,6 +51,7 @@ val responder_state_contains_initiator_server_and_comm_key:
   (comm_key:bytes) ->
   Type0
 
+/// Key secrecy on auth server side
 val auth_server_comm_key_is_secret:
   (server:principal) ->
   (set_state_idx:nat) ->
@@ -71,6 +72,7 @@ val auth_server_comm_key_is_secret:
     corrupt_id (trace_len t0) (P server) \/ corrupt_id (trace_len t0) (P initiator) \/ corrupt_id (trace_len t0) (P responder))
   ))
 
+/// Key secrecy on initiator side
 val initiator_comm_key_is_secret:
   (initiator:principal) ->
   (set_state_idx:nat) ->
@@ -91,6 +93,7 @@ val initiator_comm_key_is_secret:
     corrupt_id (trace_len t0) (P server) \/ corrupt_id (trace_len t0) (P initiator) \/ corrupt_id (trace_len t0) (P responder))
   ))
 
+/// Key secrecy on responder side
 val responder_comm_key_is_secret:
   (responder:principal) ->
   (set_state_idx:nat) ->
@@ -110,3 +113,15 @@ val responder_comm_key_is_secret:
     (is_unknown_to_attacker_at (trace_len t0) comm_key \/
     corrupt_id (trace_len t0) (P server) \/ corrupt_id (trace_len t0) (P initiator) \/ corrupt_id (trace_len t0) (P responder))
   ))
+
+/// Responder authentication to initiator.
+/// If all principals are honest then there is a matching 'req key'
+/// event that occured on the responder side for each 'fwd key'
+/// event on the initiator side.
+val responder_authentication: i:nat ->
+  LCrypto unit (pki ylm_preds)
+  (requires (fun t0 -> i < trace_len t0))
+  (ensures (fun t0 _ t1 -> forall a b srv n_a n_b k_ab.
+    did_event_occur_at i a (event_fwd_key a b srv n_a n_b k_ab)
+    ==> (did_event_occur_before i b (event_req_key a b srv n_a n_b)
+    \/ corrupt_id i (P a) \/ corrupt_id i (P b) \/ corrupt_id i (P srv))))
