@@ -245,6 +245,11 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
               includes_corrupt_2_lemma now (P a) (P srv);
               publishable_readers_implies_corruption #now [P a; P srv];
               assert(corrupt_id now (P a) \/ corrupt_id now (P srv) \/ did_event_occur_before now srv (event_send_key a b srv n_a n_b k_ab));
+              aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
+              assert(is_publishable ylm_global_usage now ser_ev_a \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_as ser_ev_a ad);
+              splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
+              assert(is_publishable ylm_global_usage now n_b \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_as ser_ev_a ad);
+              assert(is_publishable ylm_global_usage now n_b \/ did_event_occur_before now srv (event_send_key a b srv n_a n_b k_ab));
               let prev = now in
               let event = event_fwd_key a b srv n_a n_b k_ab in
               trigger_event #ylm_preds a event;
@@ -252,11 +257,6 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
               // create and send fourth message
               let ev4 = EncMsg4 n_b in
               let now = global_timestamp () in
-              aead_dec_plaintext_publishable_if_key_and_ciphertext_publishable_forall ylm_global_usage;
-              assert(is_publishable ylm_global_usage prev ser_ev_a \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
-              splittable_term_publishable_implies_components_publishable_forall ylm_global_usage;
-              assert(is_publishable ylm_global_usage prev n_b \/ aead_pred ylm_usage_preds prev "YLM.lt_key" k_as ser_ev_a ad);
-              assert(is_publishable ylm_global_usage prev n_b \/ did_event_occur_before prev srv (event_send_key a b srv n_a n_b k_ab));
               assert(is_publishable ylm_global_usage prev n_b
                 \/ was_rand_generated_before prev k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key")
                 /\ did_event_occur_before prev b (event_req_key a b srv n_a n_b));
@@ -303,6 +303,54 @@ let initiator_send_msg_4 a kas_idx msg3_idx a_si =
 #pop-options
 
 #push-options "--z3rlimit 200 --max_fuel 2 --max_ifuel 1"
+let trigger_event_recv_key (now:timestamp) (a b srv:principal) (n_b:lbytes ylm_global_usage now (readers [P b; P a; P srv]))
+  (k_ab:bytes{is_publishable ylm_global_usage now k_ab \/ is_aead_key ylm_global_usage now k_ab (readers [P srv; P a; P b]) "YLM.comm_key"})
+  (k_bs:lt_key now b srv) (ser_ev4_b:bytes{parse_encval_ ser_ev4_b == Success (EncMsg4 n_b)}) (ad:bytes) :
+  LCrypto unit (pki ylm_preds)
+  (requires (fun t0 -> now == trace_len t0 /\
+    (is_publishable ylm_global_usage now k_bs \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab))) /\
+    (is_publishable ylm_global_usage now k_ab \/ aead_pred ylm_usage_preds now "YLM.comm_key" k_ab ser_ev4_b ad)
+  ))
+  (ensures (fun t0 _ t1 -> trace_len t1 == now + 1 /\
+    did_event_occur_at now b (event_recv_key a b srv n_b k_ab))) =
+  includes_corrupt_2_lemma now (P b) (P srv);
+  publishable_readers_implies_corruption #now [P b; P srv];
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv)
+    \/ was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
+  rand_is_secret #ylm_global_usage #now #(readers [P srv; P a; P b]) #(aead_usage "YLM.comm_key") k_ab;rand_is_secret #ylm_global_usage #now #(readers [P srv; P a; P b]) #(aead_usage "YLM.comm_key") k_ab;
+  includes_corrupt_3_lemma cpred now (P srv) (P a) (P b);
+  publishable_readers_implies_corruption #now [P srv; P a; P b];
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ aead_pred ylm_usage_preds now "YLM.comm_key" k_ab ser_ev4_b ad);
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists a' b' srv' n_a'. did_event_occur_before now a' (event_fwd_key a' b' srv' n_a' n_b k_ab)));
+  assert(forall a' b' srv' n_a'. did_event_occur_before now a' (event_fwd_key a' b' srv' n_a' n_b k_ab)
+    ==> (exists i. later_than now i /\ (did_event_occur_before i srv' (event_send_key a' b' srv' n_a' n_b k_ab)
+    \/ is_publishable ylm_global_usage i n_b)));
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists a' b' srv' n_a'. did_event_occur_before now a' (event_fwd_key a' b' srv' n_a' n_b k_ab)
+    /\ (was_rand_generated_before now k_ab (readers [P srv'; P a'; P b']) (aead_usage "YLM.comm_key")
+    \/ is_publishable ylm_global_usage now n_b)));
+  readers_is_injective_3 srv a b;
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists a' b' srv' n_a'. did_event_occur_before now a' (event_fwd_key a' b' srv' n_a' n_b k_ab)
+    /\ (was_rand_generated_before now k_ab (readers [P srv'; P a'; P b']) (aead_usage "YLM.comm_key") /\ srv' == srv /\ a' == a /\ b' == b
+    \/ is_publishable ylm_global_usage now n_b)));
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists n_a'. did_event_occur_before now a (event_fwd_key a b srv n_a' n_b k_ab)
+    /\ was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key")
+    \/ is_publishable ylm_global_usage now n_b));
+  includes_corrupt_3_lemma cpred now (P b) (P a) (P srv);
+  publishable_readers_implies_corruption #now [P b; P a; P srv];
+  assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
+    \/ (exists n_a'. did_event_occur_before now a (event_fwd_key a b srv n_a' n_b k_ab)
+    /\ was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key")));
+  let event = event_recv_key a b srv n_b k_ab in
+  trigger_event #ylm_preds b event
+#pop-options
+
+#push-options "--z3rlimit 400"
 let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
   // get responder state
   let now = global_timestamp () in
@@ -313,7 +361,7 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
     // receive and parse fourth message
     let (|_,a',ser_msg4|) = receive_i #ylm_preds msg4_idx b in
 
-    if a = a' then
+    if a = a' then (
       match parse_msg ser_msg4 with
       | Success (Msg4 c_ev3_b c_ev4_b) -> (
         // get responder long term key
@@ -326,7 +374,7 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
         | Success ser_ev3_b -> (
           match parse_encval ser_ev3_b with
           | Success (EncMsg3_R a'' k_ab) -> (
-            if a = a'' then
+            if a = a'' then (
               // decrypt part of fourth message encrypted with communication key by initiator
               let ad = string_to_bytes #ylm_global_usage #now "ev4" in
               assert(is_publishable ylm_global_usage now k_bs \/ aead_pred ylm_usage_preds now "YLM.lt_key" k_bs ser_ev3_b ad);
@@ -346,22 +394,10 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
                 | Success (EncMsg4 n_b') -> (
                   if n_b = n_b' then (
                     // trigger event 'recv key'
-                    includes_corrupt_2_lemma now (P b) (P srv);
-                    publishable_readers_implies_corruption #now [P b; P srv];
-                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ (exists n_a' n_b'. did_event_occur_before now srv (event_send_key a b srv n_a' n_b' k_ab)));
-                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv)
-                      \/ was_rand_generated_before now k_ab (readers [P srv; P a; P b]) (aead_usage "YLM.comm_key"));
-                    assert(is_publishable ylm_global_usage now k_ab \/ aead_pred ylm_usage_preds now "YLM.comm_key" k_ab ser_ev4_b ad);
-                    includes_corrupt_3_lemma cpred now (P srv) (P a) (P b);
-                    publishable_readers_implies_corruption #now [P srv; P a; P b];
-                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
-                      \/ aead_pred ylm_usage_preds now "YLM.comm_key" k_ab ser_ev4_b ad);
                     assert(n_b = n_b' ==> (EncMsg4 n_b) == (EncMsg4 n_b'));
-                    assert(corrupt_id now (P b) \/ corrupt_id now (P srv) \/ corrupt_id now (P a)
-                      \/ (exists a' b' srv' n_a'. did_event_occur_before now a' (event_fwd_key a' b' srv' n_a' n_b k_ab)));
+                    assume(is_labeled ylm_global_usage now n_b (readers [P b; P a; P srv]));
                     let prev = now in
-                    let event = event_recv_key a b srv n_b k_ab in
-                    trigger_event #ylm_preds b event;
+                    trigger_event_recv_key now a b srv n_b k_ab k_bs ser_ev4_b ad;
 
                     // update responder session
                     let st_r_rcvd_m4 = ResponderRecvedMsg4 a srv k_ab in
@@ -378,14 +414,14 @@ let responder_recv_msg_4 b kbs_idx msg4_idx b_si =
                 | _ -> error "[r_recv_m4] wrong responder encval from initiator"
               )
               | Error e -> error ("[r_recv_m4] decrypt of initiator part failed: " ^ e)
-            else error "[r_recv_m4] initiator mismatch in responder encval"
+            ) else error "[r_recv_m4] initiator mismatch in responder encval"
           )
           | _ -> error "[r_recv_m4] wrong responder encval from server"
         )
         | Error e -> error ("[r_recv_m4] decrypt of server part failed: " ^ e)
       )
       | _ -> error "[r_recv_m4] wrong message"
-    else error "[r_recv_m4] actual initiator does not match with initiator stored in responder session"
+    ) else error "[r_recv_m4] actual initiator does not match with initiator stored in responder session"
   )
   | _ -> error "[r_recv_m4] wrong session"
 #pop-options

@@ -114,6 +114,18 @@ val responder_comm_key_is_secret:
     corrupt_id (trace_len t0) (P server) \/ corrupt_id (trace_len t0) (P initiator) \/ corrupt_id (trace_len t0) (P responder))
   ))
 
+/// Initiator authentication to responder.
+/// If all principals are honest then there is a matching 'fwd key'
+/// event that occured on the initiator side for each 'recv key'
+/// event on the responder side.
+val initiator_authentication: i:nat ->
+  LCrypto unit (pki ylm_preds)
+  (requires (fun t0 -> i < trace_len t0))
+  (ensures (fun t0 _ t1 -> forall a b srv n_b k_ab.
+    did_event_occur_at i b (event_recv_key a b srv n_b k_ab)
+    ==> (exists n_a. did_event_occur_before i a (event_fwd_key a b srv n_a n_b k_ab)
+    \/ corrupt_id i (P a) \/ corrupt_id i (P b) \/ corrupt_id i (P srv))))
+
 /// Responder authentication to initiator.
 /// If all principals are honest then there is a matching 'req key'
 /// event that occured on the responder side for each 'fwd key'

@@ -85,7 +85,7 @@ let epred idx s e =
     | (Success a, Success b, Success srv) ->
       a = s /\
       (did_event_occur_before idx srv (M.event_send_key a b srv n_a n_b k_ab) \/
-      LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P srv))
+      (LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P srv)) /\ LC.is_publishable M.ylm_global_usage idx n_b)
     | _ -> False
   )
   | ("recv_key",[a_bytes;b_bytes;srv_bytes;n_b;k_ab]) -> (
@@ -94,7 +94,7 @@ let epred idx s e =
       b = s /\
       ((exists n_a n_b. did_event_occur_before idx srv (M.event_send_key a b srv n_a n_b k_ab)) \/
       LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv)) /\
-      ((exists a b srv n_a. did_event_occur_before idx a (M.event_fwd_key a b srv n_a n_b k_ab)) \/
+      ((exists n_a. did_event_occur_before idx a (M.event_fwd_key a b srv n_a n_b k_ab)) \/
       LC.corrupt_id idx (P b) \/ LC.corrupt_id idx (P srv) \/ LC.corrupt_id idx (P a))
     | _ -> False
   )
