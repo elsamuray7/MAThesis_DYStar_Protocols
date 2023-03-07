@@ -7,6 +7,7 @@ open CryptoLib
 open GlobalRuntimeLib
 open YLM.Messages
 open YLM.Sessions
+open YLM.Helper
 open LabeledCryptoAPI
 open LabeledRuntimeAPI
 open LabeledPKI
