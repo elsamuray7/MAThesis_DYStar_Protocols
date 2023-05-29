@@ -8,10 +8,10 @@ open GlobalRuntimeLib
 open LabeledRuntimeAPI
 open SecurityLemmas
 open DS.Clock
-open DS.SendRecv
 
 module M = DS.Messages
 module S = DS.Sessions
+module SR = DS.SendRecv
 module L = LabeledPKI
 module A = AttackerAPI
 
@@ -77,12 +77,12 @@ let attacker_issue_fake_cert (#i:timestamp) (eve:principal)
       A.split rest `bind` (fun (a_bytes, b_bytes) ->
       A.pub_bytes_to_string a_bytes `bind` (fun a ->
       Success (a_bytes, a, b_bytes)))
-    | t -> Error ("[attacker_issue_fake_cert] wrong message: " ^ t)
+    | t -> Error ("wrong message: " ^ t)
     ))
   with
   | Success (a_bytes, a, b_bytes) ->
     // obtain timestamp and create clock
-    let t = global_timestamp () in
+    let t = A.global_timestamp () in
     let c_new = clock_new () in
 
     // generate sign nonce
@@ -106,7 +106,74 @@ let attacker_issue_fake_cert (#i:timestamp) (eve:principal)
 
     // create and send second message
     let msg2_tag = A.pub_bytes_later 0 t_n_sig (A.string_to_pub_bytes "msg2") in
-    let ser_msg2 = A.concat msg2_tag (A.concat sig_cert_a sig_fake_cert_b) in
+    let ser_msg2 = A.concat msg2_tag (A.concat (A.concat ser_cert_a sig_cert_a) (A.concat ser_fake_cert_b sig_fake_cert_b)) in
 
-    att_send #t_n_sig c_new M.auth_srv a ser_msg2
-  | Error e -> error e
+    SR.att_send #t_n_sig c_new M.auth_srv a ser_msg2
+  | Error e -> error ("[attacker_issue_fake_cert] " ^ e)
+
+let attacker_recv_msg_3 (#i:timestamp) (c_in:clock) (eve:principal)
+  (sk_e:A.pub_bytes i) (msg3_idx:timestamp) :
+  Crypto (j:timestamp & A.pub_bytes j & c_out:clock)
+  (requires (fun t0 -> msg3_idx < trace_len t0 /\
+    later_than (trace_len t0) i))
+  (ensures (fun t0 r t1 ->
+    match r with
+    | Success (|j,b,c_out|) -> t0 == t1 /\
+      j == trace_len t0 /\
+      A.attacker_knows_at j b /\
+      clock_get c_out == (clock_get c_in) + 1
+    | Error _ -> t0 == t1)) =
+  // receive and parse third message
+  let (|t_m3,c_out,ser_msg3|) = SR.att_receive_i msg3_idx c_in eve in
+
+  match
+    A.split ser_msg3 `bind` (fun (tag_bytes, rest) ->
+    A.pub_bytes_to_string tag_bytes `bind` (fun tag ->
+    match tag with
+    | "msg3" ->
+      A.split rest `bind` (fun (_, rest) ->
+      A.split rest `bind` (fun (_, c_comm_key) ->
+      Success c_comm_key))
+    | t -> Error ("wrong message: " ^ t)
+    ))
+  with
+  | Success c_comm_key -> (
+    // extract communication key
+    let now = A.global_timestamp () in
+    let sk_e = A.pub_bytes_later i now sk_e in
+    let c_comm_key = A.pub_bytes_later t_m3 now c_comm_key in
+    match A.pke_dec sk_e c_comm_key with
+    | Success ev_comm_key -> (
+      match
+        A.split ev_comm_key `bind` (fun (ser_comm_key, _) ->
+        A.split ser_comm_key `bind` (fun (tag_bytes, rest) ->
+        A.pub_bytes_to_string tag_bytes `bind` (fun tag ->
+        match tag with
+        | "comm_key" ->
+          A.split rest `bind` (fun (ck, _) -> Success ck)
+        | t -> Error ("wrong sigval: " ^ t)
+        )))
+      with
+      | Success ck -> (|now,ck,c_out|)
+      | Error e -> error ("[attacker_recv_msg_3] " ^ e)
+    )
+    | Error e -> error ("[attacker_recv_msg_3] " ^ e)
+  )
+  | Error e -> error ("[attacker_recv_msg_3] " ^ e)
+
+val attacker_knows_comm_key_stored_in_initiator_state:
+  a:principal ->
+  a_si:nat ->
+  comm_key:bytes ->
+  LCrypto unit (L.pki S.ds_preds)
+  (requires (fun t0 -> A.attacker_knows_at (trace_len t0) comm_key))
+  (ensures (fun t0 _ t1 -> True))
+
+let attacker_knows_comm_key_stored_in_initiator_state a a_si comm_key
+=
+  let now = global_timestamp () in
+  let (|_,ser_st|) = L.get_session #(S.ds_preds) #now a a_si in
+  match S.parse_session_st ser_st with
+  | Success (S.InitiatorSentMsg3 b ck) ->
+    if ck = comm_key then () else error "[attacker_knows_comm_key_stored_in_initiator_state] attacker could not derive communication key"
+  | _ -> error "[attacker_knows_comm_key_stored_in_initiator_state] wrong state"
