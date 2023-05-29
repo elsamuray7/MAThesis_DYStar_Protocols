@@ -109,9 +109,8 @@ let fake_cert_attacker () =
   let (msg1_idx, a_sess_idx) = initiator_send_msg_1 a b in
   let (|msg2_idx,c_sm2|) = attacker_issue_fake_cert e sigk_srv pk_a pk_e msg1_idx in
   let (msg3_idx, c_sm3) = initiator_send_msg_3 c_sm2 a msg2_idx a_sess_idx in
-  let (|t_ck,ck,c_end|) = attacker_recv_msg_3 c_sm3 e sk_e msg3_idx in
+  let (|t_ck,ck|) = attacker_recv_msg_3 e sk_e msg3_idx in
 
-  print_bytes ck; print_string "\n";
   attacker_knows_comm_key_stored_in_initiator_state a a_sess_idx ck
 
 let benign () : LCrypto unit (pki ds_preds)

@@ -61,8 +61,7 @@ let attacker_issue_fake_cert (#i:timestamp) (eve:principal)
       A.attacker_modifies_trace it t1) /\
       trace_len t1 == (trace_len t0) + 3 /\
       later_than (trace_len t1) (trace_len t0) /\
-      mi == (trace_len t1) - 1 /\
-      clock_get c_out == 1
+      mi == (trace_len t1) - 1
     | Error _ -> t0 == t1 \/
       (A.attacker_modifies_trace t0 t1 /\
       later_than (trace_len t1) (trace_len t0)))) =
@@ -108,23 +107,23 @@ let attacker_issue_fake_cert (#i:timestamp) (eve:principal)
     let msg2_tag = A.pub_bytes_later 0 t_n_sig (A.string_to_pub_bytes "msg2") in
     let ser_msg2 = A.concat msg2_tag (A.concat (A.concat ser_cert_a sig_cert_a) (A.concat ser_fake_cert_b sig_fake_cert_b)) in
 
-    SR.att_send #t_n_sig c_new M.auth_srv a ser_msg2
+    let msg2_idx = A.send #t_n_sig M.auth_srv a ser_msg2 in
+    (|msg2_idx,c_new|)
   | Error e -> error ("[attacker_issue_fake_cert] " ^ e)
 
-let attacker_recv_msg_3 (#i:timestamp) (c_in:clock) (eve:principal)
+let attacker_recv_msg_3 (#i:timestamp) (eve:principal)
   (sk_e:A.pub_bytes i) (msg3_idx:timestamp) :
-  Crypto (j:timestamp & A.pub_bytes j & c_out:clock)
+  Crypto (j:timestamp & A.pub_bytes j)
   (requires (fun t0 -> msg3_idx < trace_len t0 /\
     later_than (trace_len t0) i))
   (ensures (fun t0 r t1 ->
     match r with
-    | Success (|j,b,c_out|) -> t0 == t1 /\
+    | Success (|j,b|) -> t0 == t1 /\
       j == trace_len t0 /\
-      A.attacker_knows_at j b /\
-      clock_get c_out == (clock_get c_in) + 1
+      A.attacker_knows_at j b
     | Error _ -> t0 == t1)) =
   // receive and parse third message
-  let (|t_m3,c_out,ser_msg3|) = SR.att_receive_i msg3_idx c_in eve in
+  let (|t_m3,ser_msg3|) = A.receive_i msg3_idx eve in
 
   match
     A.split ser_msg3 `bind` (fun (tag_bytes, rest) ->
@@ -154,7 +153,7 @@ let attacker_recv_msg_3 (#i:timestamp) (c_in:clock) (eve:principal)
         | t -> Error ("wrong sigval: " ^ t)
         )))
       with
-      | Success ck -> (|now,ck,c_out|)
+      | Success ck -> (|now,ck|)
       | Error e -> error ("[attacker_recv_msg_3] " ^ e)
     )
     | Error e -> error ("[attacker_recv_msg_3] " ^ e)
