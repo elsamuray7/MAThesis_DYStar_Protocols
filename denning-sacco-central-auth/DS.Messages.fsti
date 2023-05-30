@@ -52,11 +52,11 @@ let can_sign (i:nat) s k ssv =
   exists p. LC.get_signkey_label ds_key_usages k == readers [P p] /\
   (match parse_sigval_ ssv with
   | Success (CertA a pk_a t) ->
-    t < i /\
-    (exists b pk_b. did_event_occur_at t p (event_certify a b pk_a pk_b t 0))
+    (t+1) < i /\
+    (exists b pk_b. did_event_occur_at (t+1) p (event_certify a b pk_a pk_b t 0))
   | Success (CertB b pk_b t) ->
-    t < i /\
-    (exists a pk_a. did_event_occur_at t p (event_certify a b pk_a pk_b t 0))
+    (t+1) < i /\
+    (exists a pk_a. did_event_occur_at (t+1) p (event_certify a b pk_a pk_b t 0))
   | Success (CommKey ck t) ->
     i > 2 /\
     (exists b pk_b. was_rand_generated_before i ck (join (readers [P p]) (LC.get_sk_label ds_key_usages pk_b)) (aead_usage "DS.comm_key") /\

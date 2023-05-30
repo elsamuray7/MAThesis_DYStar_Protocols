@@ -36,9 +36,8 @@ let server_send_msg_2 msg1_idx =
       let pk_a = get_public_key #ds_preds #now auth_srv a SIG "DS.sig_key" in
       let pk_b = get_public_key #ds_preds #now auth_srv b PKE "DS.pke_key" in
 
-      // initialize clock
-      let t = global_timestamp () in
-      let c_new = clock_new () in
+      // obtain timestamp and initialize clock
+      let (|c_new,t|) = clock_new #ds_preds auth_srv in
 
       // trigger event 'certify'
       let event = event_certify a b pk_a pk_b t (clock_get c_new) in
@@ -55,7 +54,7 @@ let server_send_msg_2 msg1_idx =
       let ser_cert_a = serialize_sigval now cert_a public in
       readers_is_injective auth_srv;
       assert(get_signkey_label ds_key_usages (vk #ds_global_usage #now #(readers [P auth_srv]) sigk_srv) == readers [P auth_srv]);
-      assert(did_event_occur_before now auth_srv (event_certify a b pk_a pk_b t 0));
+      assert(did_event_occur_at (t+1) auth_srv (event_certify a b pk_a pk_b t 0));
       parse_serialize_sigval_lemma now cert_a public;
       assert(can_sign now "DS.sig_key" (vk #ds_global_usage #now #(readers [P auth_srv]) sigk_srv) ser_cert_a);
       let sig_cert_a = sign #ds_global_usage #now #(readers [P auth_srv]) #public sigk_srv n_sig ser_cert_a in
@@ -109,8 +108,8 @@ let trigger_event_send_key (prev:timestamp) (a b:principal) (pk_a pk_b ck:bytes)
   verification_key_label_lemma ds_global_usage prev verk_srv (readers [P auth_srv]);
   assert(get_signkey_label ds_key_usages verk_srv == readers [P auth_srv]);
   assert(corrupt_id prev (P auth_srv)
-    \/ did_event_occur_at t auth_srv (event_certify a b pk_a pk_b t 0));
-  sk_label_lemma ds_global_usage t pk_b (readers [P b]);
+    \/ did_event_occur_at (t+1) auth_srv (event_certify a b pk_a pk_b t 0));
+  sk_label_lemma ds_global_usage (t+1) pk_b (readers [P b]);
   trigger_event #ds_preds a event;
   now
 
@@ -222,8 +221,8 @@ let initiator_send_msg_3 c_in a msg2_idx a_si =
                     // update initiator session
                     let st_i_sent_m3 = InitiatorSentMsg3 b ck in
                     let now = global_timestamp () in
-                    assert(corrupt_id prev (P auth_srv) \/ is_pub_enc_key t pk_b b);
-                    sk_label_lemma ds_global_usage t pk_b (readers [P b]);
+                    assert(corrupt_id prev (P auth_srv) \/ is_pub_enc_key (t+1) pk_b b);
+                    sk_label_lemma ds_global_usage (t+1) pk_b (readers [P b]);
                     let ser_st = serialize_session_st now a a_si a_vi st_i_sent_m3 in
 
                     update_session #ds_preds #now a a_si a_vi ser_st;
@@ -278,15 +277,15 @@ let trigger_event_accept_key (now:timestamp) (a b:principal) (pk_a pk_b ck:bytes
   readers_is_injective auth_srv;
   verification_key_label_lemma ds_global_usage now verk_srv (readers [P auth_srv]);
   assert(get_signkey_label ds_key_usages verk_srv == readers [P auth_srv]);
-  assert(corrupt_id now (P auth_srv) \/ t < now /\ did_event_occur_at t auth_srv (event_certify a b pk_a pk_b t 0));
+  assert(corrupt_id now (P auth_srv) \/ (t+1) < now /\ did_event_occur_at (t+1) auth_srv (event_certify a b pk_a pk_b t 0));
 
   // certify event pred ensures that pk_a is initiator's verify key (if server is honest)
-  assert(corrupt_id now (P auth_srv) \/ epred t auth_srv (event_certify a b pk_a pk_b t 0));
-  assert(corrupt_id now (P auth_srv) \/ t < now);
-  assert(corrupt_id now (P auth_srv) \/ is_ver_key t pk_a a);
-  verification_key_label_lemma ds_global_usage t pk_a (readers [P a]);
+  assert(corrupt_id now (P auth_srv) \/ epred (t+1) auth_srv (event_certify a b pk_a pk_b t 0));
+  assert(corrupt_id now (P auth_srv) \/ (t+1) < now);
+  assert(corrupt_id now (P auth_srv) \/ is_ver_key (t+1) pk_a a);
+  verification_key_label_lemma ds_global_usage (t+1) pk_a (readers [P a]);
   assert(corrupt_id now (P auth_srv) \/ get_signkey_label ds_key_usages pk_a == readers [P a]);
-  is_verify_key_later t pk_a;
+  is_verify_key_later (t+1) pk_a;
   assert(corrupt_id now (P auth_srv) \/ is_ver_key now pk_a a);
   assert(corrupt_id now (P auth_srv) \/ can_flow now (readers [P a]) public
     \/ sign_pred ds_usage_preds now "DS.sig_key" pk_a ser_comm_key);

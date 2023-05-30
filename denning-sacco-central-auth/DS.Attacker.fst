@@ -57,14 +57,17 @@ let attacker_issue_fake_cert (#i:timestamp) (eve:principal)
   (ensures (fun t0 r t1 ->
     match r with
     | Success (|mi,c_out|) ->
-      (exists it. A.attacker_modifies_trace t0 it /\
-      A.attacker_modifies_trace it t1) /\
-      trace_len t1 == (trace_len t0) + 3 /\
+      (exists it0 it1. A.attacker_modifies_trace t0 it0 /\
+      A.attacker_modifies_trace it0 it1 /\
+      A.attacker_modifies_trace it1 t1) /\
+      trace_len t1 == (trace_len t0) + 4 /\
       later_than (trace_len t1) (trace_len t0) /\
       mi == (trace_len t1) - 1
     | Error _ -> t0 == t1 \/
-      (A.attacker_modifies_trace t0 t1 /\
-      later_than (trace_len t1) (trace_len t0)))) =
+      (A.attacker_modifies_trace t0 t1 \/
+      (exists it. A.attacker_modifies_trace t0 it /\
+      A.attacker_modifies_trace it t1)) /\
+      later_than (trace_len t1) (trace_len t0))) =
   // receive and parse first message
   let (|t_m1,ser_msg1|) = A.receive_i msg1_idx M.auth_srv in
 
@@ -81,8 +84,7 @@ let attacker_issue_fake_cert (#i:timestamp) (eve:principal)
   with
   | Success (a_bytes, a, b_bytes) ->
     // obtain timestamp and create clock
-    let t = A.global_timestamp () in
-    let c_new = clock_new () in
+    let (|c_new,t|) = att_clock_new () in
 
     // generate sign nonce
     let (|t_n_sig,n_sig|) = A.pub_rand_gen (nonce_usage "SIG_NONCE") in
