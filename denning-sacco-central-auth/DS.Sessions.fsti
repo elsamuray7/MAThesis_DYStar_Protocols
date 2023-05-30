@@ -69,7 +69,7 @@ let epred idx s e =
       a = s /\
       clock_cnt <= M.recv_msg_2_delay /\
       (LC.get_sk_label M.ds_key_usages pk_b == readers [P b] /\
-      t < idx /\ did_event_occur_at t M.auth_srv (M.event_certify a b pk_a pk_b t 0) \/ LC.corrupt_id idx (P M.auth_srv)) /\
+      t < idx /\ did_event_occur_at (t+1) M.auth_srv (M.event_certify a b pk_a pk_b t 0) \/ LC.corrupt_id idx (P M.auth_srv)) /\
       was_rand_generated_before idx ck (join (readers [P a]) (LC.get_sk_label M.ds_key_usages pk_b)) (aead_usage "DS.comm_key")
     | _ -> False
   )
@@ -78,7 +78,7 @@ let epred idx s e =
     | (Success a, Success b, Success t, Success clock_cnt) ->
       b = s /\
       clock_cnt <= M.recv_msg_3_delay /\
-      (t < idx /\ did_event_occur_at t M.auth_srv (M.event_certify a b pk_a pk_b t 0) \/ LC.corrupt_id idx (P M.auth_srv)) /\
+      (t < idx /\ did_event_occur_at (t+1) M.auth_srv (M.event_certify a b pk_a pk_b t 0) \/ LC.corrupt_id idx (P M.auth_srv)) /\
       ((exists clock_cnt'. clock_cnt' <= M.recv_msg_2_delay /\ did_event_occur_before idx a (M.event_send_key a b pk_a pk_b ck t clock_cnt')) /\
       was_rand_generated_before idx ck (join (readers [P a]) (readers [P b])) (aead_usage "DS.comm_key") \/
       LC.corrupt_id idx (P a) \/ LC.corrupt_id idx (P M.auth_srv))

@@ -88,7 +88,7 @@ val responder_comm_key_is_not_replay: i:nat ->
   (requires (fun t0 -> i < trace_len t0))
   (ensures (fun t0 _ t1 -> forall a b pk_a pk_b ck t clock_cnt.
     did_event_occur_at i b (event_accept_key a b pk_a pk_b ck t clock_cnt)
-    ==> clock_cnt <= recv_msg_3_delay /\ (did_event_occur_at t auth_srv (event_certify a b pk_a pk_b t 0) \/ corrupt_id i (P auth_srv))))
+    ==> clock_cnt <= recv_msg_3_delay /\ (did_event_occur_at (t+1) auth_srv (event_certify a b pk_a pk_b t 0) \/ corrupt_id i (P auth_srv))))
 
 /// Mutual authentication based on certificates issued by the server.
 /// TODO: Is this enough?
@@ -98,7 +98,7 @@ val mutual_authentication: i:nat -> j:nat ->
   (ensures (fun t0 _ t1 -> forall a b pk_a pk_b ck t clock_cnt_a clock_cnt_b.
     did_event_occur_at i a (event_send_key a b pk_a pk_b ck t clock_cnt_a) /\
     did_event_occur_at j b (event_accept_key a b pk_a pk_b ck t clock_cnt_b)
-    ==> t < i /\ did_event_occur_at t auth_srv (event_certify a b pk_a pk_b t 0) \/ corrupt_id i (P auth_srv)))
+    ==> t < i /\ did_event_occur_at (t+1) auth_srv (event_certify a b pk_a pk_b t 0) \/ corrupt_id i (P auth_srv)))
 
 /// Alternative and "stronger" definition of authentication property for initiator
 val initiator_authentication: i:nat ->
@@ -107,5 +107,5 @@ val initiator_authentication: i:nat ->
   (ensures (fun t0 _ t1 -> forall a b pk_a pk_b ck t clock_cnt.
     did_event_occur_at i b (event_accept_key a b pk_a pk_b ck t clock_cnt)
     ==> (exists clock_cnt'. clock_cnt' <= recv_msg_2_delay /\ did_event_occur_before i a (event_send_key a b pk_a pk_b ck t clock_cnt') \/ corrupt_id i (P a)) /\
-        t < i /\ did_event_occur_at t auth_srv (event_certify a b pk_a pk_b t 0) \/
+        t < i /\ did_event_occur_at (t+1) auth_srv (event_certify a b pk_a pk_b t 0) \/
         corrupt_id i (P auth_srv)))
